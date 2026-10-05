@@ -1,0 +1,5 @@
+/target
+/.idea/workspace.xml
+/hardware/out
+*.png.tmp
+.idea
