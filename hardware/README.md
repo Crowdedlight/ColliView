@@ -37,6 +37,7 @@ see that rim, and should spend its pixels on it.
 |---|---|
 | **OV3660 3 MP, 64° lens** (HBVCAM-3M2111, ~30×25 mm, preset `ov3660_hbv`) | Best of the cheap boards. Before buying, confirm it offers a 4:3 MJPEG mode (2048×1536) and that 64° is the diagonal: then the vertical FOV is ~41°. At 1920×1080 it is ~33°, which is marginal. **Avoid the 110° version**: the rim would be only ~350 px across. |
 | OV9726 1 MP (HBV board, ~32×32 mm, preset `ov9726_hbv`) | Only with the **70°** lens (~38° vertical). The 42° lens crops the rim. Low resolution. |
+| IMX179 8 MP autofocus (`DB05-AF-8MP` board, 28×28 mm, preset `imx179_db05`) | Compact voice-coil focus can, 10 cm–∞. Manual focus is not yet confirmed: the first thing to check is that `cargo run --example controls_spike` passes. If the stock lens is the usual ~72° diagonal one, the vertical FOV is ~47° in 4:3 modes. That is wider than ideal, but the rim would still be ~1150 px across at 3264×2448 and ~930 px at 2592×1944, if the board offers those modes (similar IMX179 boards do, at 15 fps for the largest). Use a 4:3 MJPEG mode: 1920×1080 cuts the vertical FOV to ~36° at best, and less if the mode is a centre crop. **Avoid the wide M12 lens options**: they change the preset by several mm too. |
 | **Autofocus UVC module with manual focus control**, e.g. Arducam B0292 (IMX219 AF, 60° H) or an IMX179 AF board | The upgrade (~$35–60). The app can refocus from the drawtube/secondary (15–25 cm) to the primary reflections (≥ 1 m) without touching the camera. **Check that reviews show a Focus slider in AMCap or `focus_absolute` in `v4l2-ctl`.** Many cheap OV5640 AF boards run continuous AF only. |
 
 **Fixed-focus lenses:** set the focus to about 15–20 cm, between the rim and the
@@ -45,13 +46,20 @@ circle's fitted centre, so they still work as concentricity references.
 
 > **Measure your board before printing.** The presets were estimated from listing
 > photos, not datasheets. Check the PCB size, hole pitch, lens-holder footprint,
-> `lens_body_d` and `lens_drop` with calipers, and override them
-> (`camera = "custom"`). `lens_body_d` and `lens_drop` decide the baffle size and
-> whether the lens physically fits.
+> lens body diameter and lens drop with calipers. Then correct the preset's line in
+> `preset()`, or switch to `camera = "custom"` and use the `custom_*` values. The lens
+> body diameter and drop decide the baffle size and whether the lens physically fits.
+>
+> `imx179_db05` takes its PCB and holes from the listing's drawing, which shows a
+> fixed-focus revision of the board. The focus can's size and height come from photos.
+> The photos hint that the lens sits ~1 mm off-centre towards the connector edge, so
+> check the lens offset too. The connector's pins come through on the lens side: trim
+> them below the 1.5 mm stand-off, or the board won't sit flat on the carrier bosses.
 
 For a board not in the presets, set `camera = "custom"` and fill in `custom_pcb`,
-`custom_holes`, `custom_holder` and `custom_lens_offset`. The lens isn't always in
-the middle of the PCB; the offset puts the lens on the axis.
+`custom_holes`, `custom_holder`, `custom_lens_offset`, `custom_lens_body_d` and
+`custom_lens_drop`. The lens isn't always in the middle of the PCB; the offset puts
+the lens on the axis.
 
 ## 2. Light ring
 
@@ -122,6 +130,15 @@ and set `acrylic_t` to it before exporting the barrel.
 
 ## 4. Assembly
 
+![Exploded cutaway of the adapter. From the top: cap, camera board, carrier, baffle, head
+with a centring screw, barrel with the LED strip, acrylic ring and retainer.](img/assembly_exploded.png)
+
+The blue numbers are the steps below; the arrows show which way each part goes in.
+The quarter facing you is cut away. The left cut is on the wire side, and the right cut
+goes through a centring screw. The drawing uses the default parameters; set
+`part = "exploded"` in OpenSCAD to turn it around, and run `python make_figures.py`
+(needs Pillow and NumPy) to redraw the figures after changing the model.
+
 1. Glue the **head** onto the barrel's flange (CA or epoxy). The spigot locates it;
    line up the two marks (they show the wire-channel side). Melt M3 heat-set inserts
    into the three bosses. Fit M3×10 screws with nylon tips, or cap them with a drop of
@@ -141,6 +158,9 @@ and set `acrylic_t` to it before exporting the barrel.
    (M2 self-tappers where the board has holes). Put the carrier in the head with its
    notch at the marks. Solder the LED wires through the resistor and
    trimmer to the board's 5V and GND pads.
+
+   ![The head from above after step 5, with the cap off: the mark and the carrier notch
+   on the wire side, and the three centring screws.](img/assembly_top.png)
 6. Plug in USB, set the trimmer to 30–50 mA (measure with a multimeter), close the cap
    and zip-tie the cable for strain relief.
 
@@ -160,6 +180,8 @@ and set `acrylic_t` to it before exporting the barrel.
 
 * OV9726 module: <https://www.aliexpress.com/item/1005004029465825.html>
 * OV3660 module: <https://www.aliexpress.com/item/1005006543674079.html>
+* IMX179 AF module (`DB05-AF-8MP`): <https://www.aliexpress.com/item/1005005334799549.html>
+* Typical IMX179 AF lens (3.5 mm, F2.2, ~72° diagonal, 10 cm–∞), from DFRobot's FIT1022, a similar board: <https://littlebirdelectronics.com.au/products/imx179-8mp-autofocus-usb-camera-module-with-microphone-for-raspberry-pi-nvidia-lattepanda>
 * Waveshare OV5640 USB (A), autofocus with no documented manual focus: <https://www.waveshare.com/wiki/OV5640_5MP_USB_Camera_(A)>
 * Arducam UVC selection guide: <https://docs.arducam.com/UVC-Camera/USB2-UVC-Camera-Kit/Specs-and-Selection-Guide/>
 * Arducam AMCap focus-mode notes: <https://docs.arducam.com/UVC-Camera/Appilcation-Note/Software-Instruction/Windows-AMCap/>
