@@ -54,7 +54,8 @@ circle's fitted centre, so they still work as concentricity references.
 > fixed-focus revision of the board. The focus can's size and height come from photos.
 > The photos hint that the lens sits ~1 mm off-centre towards the connector edge, so
 > check the lens offset too. The connector's pins come through on the lens side: trim
-> them below the 1.5 mm stand-off, or the board won't sit flat on the carrier bosses.
+> them below the 3 mm stand-off (the height of the insert bosses), or the board won't
+> sit flat on them.
 
 For a board not in the presets, set `camera = "custom"` and fill in `custom_pcb`,
 `custom_holes`, `custom_holder`, `custom_lens_offset`, `custom_lens_body_d` and
@@ -107,6 +108,7 @@ This writes `out/`:
 | `head.stl` | The tube around the camera carrier, with the three centring-screw bosses. |
 | `carrier.stl`, `baffle.stl`, `retainer.stl`, `cap.stl` | The other printed parts, already in print orientation. |
 | `tolerance_test.stl` | Seven barrel rings from −0.3 to +0.3 mm with the diameter engraved. **Print this first.** |
+| `fit_test.stl` | A peg and five rings with total gaps of 0.1–0.5 mm engraved. **Print this first** too. |
 | `diffuser_2mm.dxf/.svg`, `diffuser_3mm.dxf/.svg` | The laser-cut ring. |
 
 **Printing.** PETG or ASA, matte black. Use 4 perimeters for a round, stiff barrel.
@@ -122,6 +124,31 @@ Every STL is oriented to print without supports:
 
 Try the tolerance rings in your focuser and set `barrel_od` to the snug one.
 
+**Fits.** `fit_gap` is the total gap (hole Ø − part Ø) between printed parts that slide
+together. The default is 0.3 mm. It applies to the head's spigot in the flange groove,
+the baffle in the barrel floor and its counterbore, the cap lip in the head, and the
+camera PCB in the carrier pocket. Push the fit-test peg through the rings and set
+`fit_gap` to the ring it passes through without play. Most of these fits have one side
+on the first layer, so `bed_chamfer` (0.4 mm) bevels those edges against elephant's foot.
+These are not slide fits and have their own settings:
+* the retainer is a press fit (`press_fit`)
+* the carrier floats in the head by `float`
+* the barrel is tuned to the focuser with `barrel_od`
+* the insert holes follow the insert maker's table
+* the laser-cut acrylic has `acrylic_clear` per side
+
+**Heat-set inserts.** The screw holes are sized for [CNC Kitchen inserts][cnck]. From
+their table, each hole is D2 wide and at least L + 1 mm deep, with at least W plus
+`insert_margin` of plastic around it. `centring_insert` (default `M3x5.7`) sets the
+three centring screws, and `pcb_insert` (default `M2x3`) the camera board's screws.
+The table's other M2–M4 sizes can be picked as well. The console prints the screws
+to buy, e.g. `Centring screws: M3x5.7 inserts, M3 x 12 screws`. The PCB bosses
+have blind holes, closed `insert_skin` above the carrier's underside, so no melt can
+come out where the carrier slides on the floor. On boards with mounting holes this
+puts the PCB a little higher than on corner pads.
+
+[cnck]: https://cnckitchen.store/cdn/shop/files/table_metric.png
+
 **Laser cutting.** Import the DXF **in millimetres** (DXF has no units). `kerf` is
 the full kerf width: the outer path is already offset outward by kerf/2 and the inner
 path inward by kerf/2. **Turn off your laser software's own kerf/offset**, or it gets
@@ -135,14 +162,24 @@ with a centring screw, barrel with the LED strip, acrylic ring and retainer.](im
 
 The blue numbers are the steps below; the arrows show which way each part goes in.
 The quarter facing you is cut away. The left cut is on the wire side, and the right cut
-goes through a centring screw. The drawing uses the default parameters; set
-`part = "exploded"` in OpenSCAD to turn it around, and run `python make_figures.py`
-(needs Pillow and NumPy) to redraw the figures after changing the model.
+goes through a centring screw.
+
+![Section of the assembled adapter, each part's cut face in its own colour: the cap's lip
+in the head, the camera board in the carrier, the head's spigot in the flange's groove,
+a centring screw against the carrier, the baffle's flange in the counterbore, and the
+acrylic ring and retainer at the bottom.](img/assembly_section.png)
+
+The section shows the same parts assembled and cut in half. Each part's cut face has its
+own colour, so you can see how the parts fit into each other. Again the left half is cut
+on the wire side and the right half through a centring screw. The drawings use the
+default parameters; set `part = "exploded"` or `part = "section"` in OpenSCAD to turn
+them around, and run `python make_figures.py` (needs Pillow and NumPy) to redraw the
+figures after changing the model.
 
 1. Glue the **head** onto the barrel's flange (CA or epoxy). The spigot locates it;
-   line up the two marks (they show the wire-channel side). Melt M3 heat-set inserts
-   into the three bosses. Fit M3×10 screws with nylon tips, or cap them with a drop of
-   hot glue, so they don't dig into the carrier.
+   line up the two marks (they show the wire-channel side). Melt M3×5.7 heat-set inserts
+   into the three bosses from outside, flush with the boss faces. Fit M3×12 screws with
+   nylon tips, or cap them with a drop of hot glue, so they don't dig into the carrier.
 2. **Light chamber:** line the barrel's inside wall with white tape or paint it white,
    to mix the light. Stick the COB strip around the top of the chamber, leaving the gap
    at the sloped wire channel. Feed the two wires up through the channel into the head.
@@ -154,9 +191,10 @@ goes through a centring screw. The drawing uses the default parameters; set
    baffle. Press the retainer onto the baffle's end until it clamps the ring against
    the ledge. The clamping force is axial only; the precision barrel never gets
    pushed out. Use a drop of glue if the press fit is loose.
-5. **Camera:** fit the PCB into the carrier with the lens down through the floor
-   (M2 self-tappers where the board has holes). Put the carrier in the head with its
-   notch at the marks. Solder the LED wires through the resistor and
+5. **Camera:** if the board has mounting holes, melt M2×3 heat-set inserts into the
+   carrier's bosses, flush with their tops. Fit the PCB into the carrier with the lens
+   down through the floor, and fix it with M2×5 screws (or M2×4). Put the carrier in
+   the head with its notch at the marks. Solder the LED wires through the resistor and
    trimmer to the board's 5V and GND pads.
 
    ![The head from above after step 5, with the cap off: the mark and the carrier notch
@@ -186,3 +224,4 @@ goes through a centring screw. The drawing uses the default parameters; set
 * Arducam UVC selection guide: <https://docs.arducam.com/UVC-Camera/USB2-UVC-Camera-Kit/Specs-and-Selection-Guide/>
 * Arducam AMCap focus-mode notes: <https://docs.arducam.com/UVC-Camera/Appilcation-Note/Software-Instruction/Windows-AMCap/>
 * Opal acrylic: <https://www.perspex.co.uk/materials/perspex-cast-acrylic/opal-white/>
+* CNC Kitchen heat-set insert dimensions: <https://cnckitchen.store/cdn/shop/files/table_metric.png>

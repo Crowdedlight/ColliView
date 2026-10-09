@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Render the README's assembly figures from colliview_adapter.scad into img/.
+"""Render the README's assembly figures from colliview_adapter.scad into img/: the
+exploded cutaway, the assembled half-section and the view from above.
 
     python make_figures.py [extra openscad -D overrides...]
 
@@ -40,10 +41,23 @@ EXPLODED_LABELS = [
     ("left", 4, "Opal acrylic ring", "pushed into the recess", ["diffuser"]),
     ("right", 3, "Baffle", "black bore, white outside", ["baffle"]),
     ("right", 1, "Head", "glued onto the flange", ["head"]),
-    ("right", 1, "Centring screw ×3", "M3 heat-set insert, M3×10", ["insert", "screw"]),
+    ("right", 1, "Centring screw ×3", "M3×5.7 heat-set insert, M3×12", ["insert", "screw"]),
     ("right", 2, "COB LED strip", "on the white-lined wall", ["led_strip"]),
     ("right", None, "Barrel", "flange seats on the focuser", ["barrel"]),
     ("right", 4, "Retainer", "pressed onto the baffle", ["retainer"]),
+]
+SECTION_LABELS = [
+    ("left", 6, "Cap", "lip inside the head", ["sv_cap"]),
+    ("left", 5, "Camera board", "lens down into the baffle", ["sv_camera"]),
+    ("left", 1, "Head", "spigot glued in the groove", ["sv_spigot"]),
+    ("left", 2, "LED wires", "up the channel", ["sv_wires"]),
+    ("left", 4, "Opal acrylic ring", "in the recess", ["sv_diffuser"]),
+    ("right", 1, "Centring screw ×3", "insert in the head, tip on the carrier", ["sv_insert", "sv_screw"]),
+    ("right", 5, "Carrier", "rests on the floor, slides sideways", ["sv_carrier"]),
+    ("right", 3, "Baffle", "flange in the counterbore", ["sv_baffle"]),
+    ("right", 2, "COB LED strip", "on the chamber wall", ["sv_led_strip"]),
+    ("right", None, "Barrel", "into the focuser up to the flange", ["sv_barrel"]),
+    ("right", 4, "Retainer", "pressed onto the baffle", ["sv_retainer"]),
 ]
 TOP_LABELS = [
     ("left", None, "Mark", "on the head's rim", ["tv_mark"]),
@@ -241,6 +255,9 @@ def main():
     # Exploded cutaway, seen from the cut-away quarter (45 deg) and 20 deg above.
     figure("exploded", View([0, 0, 82], [70, 0, 135], 4.6, [140, 290]), EXPLODED_LABELS,
            OUT / "assembly_exploded.png", extra, axis=True)
+    # Assembled and cut in half, seen at the cut from 10 deg above, wire side on the left.
+    figure("section", View([0, 0, 30], [80, 0, 180], 9, [110, 110]), SECTION_LABELS,
+           OUT / "assembly_section.png", extra)
     # From above, turned so that the wire side is on the left as in the exploded view.
     figure("top_view", View([0, 0, 40], [0, 0, 180], 4.6, [110, 110]), TOP_LABELS,
            OUT / "assembly_top.png", extra)
