@@ -50,11 +50,10 @@ circle's fitted centre, so they still work as concentricity references.
 > `preset()`, or switch to `camera = "custom"` and use the `custom_*` values. The lens
 > body diameter and drop decide the baffle size and whether the lens physically fits.
 >
-> `imx179_db05` takes its PCB and holes from the listing's drawing, which shows a
-> fixed-focus revision of the board. The focus can's size and height come from photos.
-> The photos hint that the lens sits ~1 mm off-centre towards the connector edge, so
-> check the lens offset too. The connector's pins come through on the lens side: trim
-> them below the 3 mm stand-off (the height of the insert bosses), or the board won't
+> `imx179_db05` is measured on the board: a 28 × 28 × 1.12 mm PCB with 2.5 mm holes on
+> a 23 mm square, and a centred 8.46 × 8.46 × 4.5 mm focus can. The connector's pins
+> come through on the lens side, about 2.35 mm: they clear the 3 mm stand-off (the
+> height of the insert bosses), but trim them if yours are longer, or the board won't
 > sit flat on them.
 
 For a board not in the presets, set `camera = "custom"` and fill in `custom_pcb`,

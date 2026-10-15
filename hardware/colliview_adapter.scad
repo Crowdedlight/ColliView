@@ -14,7 +14,7 @@ part = "assembly"; // [assembly, section, exploded, top_view, barrel, head, carr
 
 /* [Focuser fit] */
 // 2" = 50.8 nominal; print tolerance_test first and pick the ring that fits. 1.25" = 31.6
-barrel_od = 50.6;
+barrel_od = 50.9;
 // Insertion depth into the focuser
 barrel_len = 32;
 barrel_wall = 2.2;
@@ -23,7 +23,7 @@ flange_t = 4;
 flange_extra = 5;
 
 /* [Camera module] */
-camera = "ov3660_hbv"; // [ov3660_hbv, ov9726_hbv, imx179_db05, generic_38, custom]
+camera = "imx179_db05"; // [ov3660_hbv, ov9726_hbv, imx179_db05, generic_38, custom]
 // Used when camera = "custom": PCB width, height, thickness
 custom_pcb = [30, 25, 1.6];
 // Mounting hole pitch x, y (0, 0 = no holes; corner supports are used instead)
@@ -67,7 +67,7 @@ wire_gap = 8;
 
 /* [Printing] */
 // Total gap (hole diameter - part diameter) between printed parts that slide together; print fit_test to find yours
-fit_gap = 0.3;
+fit_gap = 0.15;
 // 45 deg chamfer where a fit starts on the first layer, against elephant's foot
 bed_chamfer = 0.4;
 // Interference of the retainer on the baffle tube
@@ -83,15 +83,14 @@ $fn = 128;
 // [pcb [w, h, t], holes [x, y], holder [w, h], lens offset [x, y], lens body d, lens drop]
 //
 // imx179_db05: IMX179 8 MP autofocus board, silkscreen "DB05-AF-8MP" (AliExpress
-// 1005005334799549). PCB and holes from the listing's drawing: 28 x 28 mm with four
-// 2.5 mm holes on a 23 mm square (two of them open slots). Its lens is the compact
-// voice-coil focus can (~9 x 9 mm, ~5 mm tall), estimated from photos. The drawing
-// shows the lens centred, but the photos hint at ~1 mm towards the connector edge,
-// so the holder cut-out is oversized to clear either.
+// 1005005334799549). Measured on the board: the PCB is 28 x 28 x 1.12 mm with four
+// 2.5 mm holes on a 23 mm square (two of them open slots). The voice-coil focus can is
+// 8.46 x 8.46 mm and 4.5 mm tall plus ~0.1 mm of lens, and it sits centred. The
+// connector's pins stick out 2.35 mm on the lens side, under the 3 mm stand-off.
 function preset(name) =
     name == "ov3660_hbv" ? [[30, 25, 1.6], [0, 0], [14, 14], [0, 0], 14, 12] :
     name == "ov9726_hbv" ? [[32, 32, 1.6], [28, 28], [14, 14], [0, 0], 14, 12] :
-    name == "imx179_db05" ? [[28, 28, 1.6], [23, 23], [11, 11], [0, 0], 14, 5] :
+    name == "imx179_db05" ? [[28, 28, 1.12], [23, 23], [8.5, 8.5], [0, 0], 12, 4.6] :
     name == "generic_38" ? [[38, 38, 1.6], [34, 34], [16, 16], [0, 0], 14, 12] :
     [custom_pcb, custom_holes, custom_holder, custom_lens_offset, custom_lens_body_d, custom_lens_drop];
 
