@@ -206,7 +206,7 @@ impl Capture for TestPatternCapture {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::calibrate::{COAXIAL_TOLERANCE, RotationSample, solve};
+    use crate::calibrate::{COAXIAL_TOLERANCE, RotationSample, live_bias, solve};
     use crate::detect::{DetectParams, GrayImage, detect_circle};
     use crate::overlay::Measurement;
 
@@ -260,5 +260,32 @@ mod tests {
         assert!(r.coaxial);
         assert!((r.bias - expected_bias).length() < 0.5, "bias {:?} vs {expected_bias:?}", r.bias);
         assert!((r.misalignment - expected_v).length() < 0.5, "v {:?} vs {expected_v:?}", r.misalignment);
+    }
+
+    /// Measure the rim, then the secondary from the rim's result, like the app does.
+    fn sample_at(scene: &Scene) -> RotationSample {
+        let g = scene.geometry(W, H);
+        let img = gray(scene);
+        let rim = measure(&img, pos2(W as f32 / 2.0, H as f32 / 2.0), 0.42 * H as f32, 0.25);
+        let sec = measure(&img, rim.center, g.secondary.1, 0.12);
+        RotationSample { rim, target: sec.center }
+    }
+
+    #[test]
+    fn live_bias_follows_the_carrier_screws() {
+        let mut scene = Scene { noise: 4.0, ..Default::default() };
+        let s0 = sample_at(&scene);
+        scene.rotation_deg = 180.0;
+        let r = solve(&s0, &sample_at(&scene), COAXIAL_TOLERANCE);
+        assert!(r.coaxial);
+        // Still at 180°, the screws move the camera towards the axis: less parallax, and
+        // the whole image shifts a little.
+        for (parallax, axis_offset) in [([1.5, -0.5], [14.0, -9.0]), ([0.0, 0.0], [12.0, -8.0])] {
+            scene.parallax = parallax;
+            scene.axis_offset = axis_offset;
+            let live = live_bias(&r, &sample_at(&scene));
+            let expected = Vec2::from(parallax);
+            assert!((live - expected).length() < 0.5, "live bias {live:?} vs {expected:?}");
+        }
     }
 }

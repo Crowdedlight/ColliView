@@ -1,12 +1,14 @@
 use egui::{Color32, DragValue, RichText, Ui};
 
 use crate::app::{ColliViewApp, JobKind};
+use crate::calibrate::CENTRED_TOLERANCE;
 
 pub fn calibration_panel(app: &mut ColliViewApp, ui: &mut Ui) {
     ui.label(
         "If the camera isn't exactly on the focuser axis, features further down the tube look \
          shifted. Measuring at 0° and 180° adapter rotation separates that camera bias from real \
-         misalignment.",
+         misalignment. Remove most of it with the adapter's carrier screws (Live), then store the \
+         rest as layer offsets.",
     );
     let o = &app.s.overlay;
     let candidates: Vec<_> =
@@ -25,8 +27,7 @@ pub fn calibration_panel(app: &mut ColliViewApp, ui: &mut Ui) {
             }
         });
         if changed {
-            app.calib.samples = [None, None];
-            app.calib.result = None;
+            app.calib.reset();
         }
     });
     ui.checkbox(&mut app.calib.manual, "Use current circle positions instead of auto-detect").on_hover_text(
@@ -76,10 +77,13 @@ pub fn calibration_panel(app: &mut ColliViewApp, ui: &mut Ui) {
         r.misalignment.y,
         r.misalignment_percent()
     ));
+    // While Live runs the screws may have moved the camera, so this bias is out of date.
+    let live_on = app.calib.live;
     ui.horizontal(|ui| {
         if ui
-            .add_enabled(r.coaxial, egui::Button::new(RichText::new("Apply bias as layer offset").strong()))
+            .add_enabled(r.coaxial && !live_on, egui::Button::new(RichText::new("Apply bias as layer offset").strong()))
             .on_hover_text("The circle moves to where a perfectly aligned feature appears through this camera")
+            .on_disabled_hover_text("Needs a calibration without the rim moving, and Live off")
             .clicked()
             && let Some(t) = app.calib.target
             && let Some(l) = app.s.overlay.layer_mut(t)
@@ -89,10 +93,67 @@ pub fn calibration_panel(app: &mut ColliViewApp, ui: &mut Ui) {
             app.info(format!("Offset applied to '{name}'"));
         }
         if ui.button("Start over").clicked() {
-            app.calib.samples = [None, None];
-            app.calib.result = None;
+            app.calib.reset();
         }
     });
+    if app.calib.result.is_none() {
+        return;
+    }
+
+    // Live bias, for centring the camera with the carrier screws.
+    ui.separator();
+    // Live auto-detects; with hand-placed circles the two halves wouldn't match.
+    if app.calib.manual && app.calib.live {
+        app.calib.stop_live();
+    }
+    let mut live = app.calib.live;
+    ui.add_enabled(
+        r.coaxial && !app.calib.manual,
+        egui::Checkbox::new(&mut live, "Live: centre the camera with the carrier screws"),
+    )
+    .on_hover_text("Measures the camera bias continuously. Leave the adapter as it is after the 180° capture.")
+    .on_disabled_hover_text(
+        "Needs auto-detect (untick 'Use current circle positions') and a calibration without the rim moving",
+    );
+    if live && !app.calib.live {
+        app.calib.live = true;
+    } else if !live && app.calib.live {
+        // The screws may have moved the camera: the captures no longer apply.
+        app.calib.reset();
+    }
+    if !app.calib.live {
+        return;
+    }
+    ui.label(
+        "Leave the adapter as it is and turn the carrier screws until this reads about 0: the lens is \
+         then on the focuser axis. Then untick Live and calibrate each layer again; the old captures \
+         and offsets no longer apply.",
+    );
+    match app.calib.live_bias {
+        Some(b) => {
+            let text = RichText::new(format!(
+                "Camera bias now:  {:+.2}, {:+.2} px  ({:.2} % of ring)",
+                b.x,
+                b.y,
+                100.0 * b.length() / r.rim_radius.max(1e-3)
+            ))
+            .strong();
+            let centred = b.length() <= CENTRED_TOLERANCE * r.rim_radius;
+            ui.label(if centred { text.color(Color32::from_rgb(140, 220, 140)) } else { text });
+        }
+        None => {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label("Measuring…");
+            });
+        }
+    }
+    if app.calib.live_failures > 0 {
+        ui.colored_label(
+            Color32::from_rgb(255, 170, 60),
+            format!("Searching… ({} misses): keep the rim and the layer's feature in view", app.calib.live_failures),
+        );
+    }
 }
 
 /// Controls for the synthetic camera, to try the tools without hardware.

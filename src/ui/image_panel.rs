@@ -34,6 +34,6 @@ pub fn image_panel(app: &mut ColliViewApp, ui: &mut Ui) {
     });
     ui.checkbox(&mut app.s.view.nearest_when_zoomed, "Sharp pixels when zoomed ≥ 2×");
     ui.checkbox(&mut app.s.show_image_center, "Mark the sensor centre")
-        .on_hover_text("Grey ✕ at the image centre: helps centring the camera in the adapter");
+        .on_hover_text("Grey ✕ at the image centre: for roughly centring the camera in the adapter");
     ui.checkbox(&mut app.s.snapshot_overlay, "Snapshots include overlays");
 }

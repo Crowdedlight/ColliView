@@ -77,7 +77,12 @@ pub enum JobKind {
     Measure(LayerId),
     /// Rotation calibration capture (0 = 0°, 1 = 180°): rim + target.
     Calibration { step: usize, target: LayerId },
+    /// Live camera-bias readout after a calibration, while the carrier screws turn: rim + target.
+    LiveBias { target: LayerId },
 }
+
+/// Time between live bias measurements.
+const LIVE_INTERVAL: Duration = Duration::from_millis(250);
 
 pub struct Job {
     pub kind: JobKind,
@@ -91,6 +96,27 @@ pub struct CalibrationState {
     pub manual: bool,
     pub samples: [Option<RotationSample>; 2],
     pub result: Option<CalibrationResult>,
+    /// Measure the camera bias live, for centring the camera with the carrier screws.
+    pub live: bool,
+    pub live_bias: Option<Vec2>,
+    /// Live measurements that found no rim or target since the last good one.
+    pub live_failures: u32,
+    live_next: Option<Instant>,
+}
+
+impl CalibrationState {
+    /// Forget the captures and stop the live readout; keeps the layer and the mode.
+    pub fn reset(&mut self) {
+        self.samples = [None, None];
+        self.result = None;
+        self.stop_live();
+    }
+
+    pub fn stop_live(&mut self) {
+        self.live = false;
+        self.live_bias = None;
+        self.live_failures = 0;
+    }
 }
 
 pub struct Message {
@@ -288,8 +314,7 @@ impl ColliViewApp {
         self.texture = None;
         self.frozen = false;
         self.s.view.reset();
-        self.calib.samples = [None, None];
-        self.calib.result = None;
+        self.calib.reset();
     }
 
     fn set_frame(&mut self, f: Frame) {
@@ -396,7 +421,33 @@ impl ColliViewApp {
         self.spawn_job(JobKind::Calibration { step, target }, vec![rim, tgt]);
     }
 
+    /// One live measurement of the rim and the target, for the carrier-screw readout.
+    fn calibration_live_measure(&mut self) {
+        let Some(target) = self.calib.target else { return };
+        let o = &self.s.overlay;
+        let (Some(rim_r), Some(r)) = (o.reference_radius(), o.layer(target).and_then(|l| l.radius())) else {
+            return;
+        };
+        let rim = DetectParams::around(o.center, rim_r, 0.15);
+        let tgt = DetectParams::around(o.center, r, 0.15);
+        self.calib.live_next = Some(Instant::now() + LIVE_INTERVAL);
+        self.spawn_job(JobKind::LiveBias { target }, vec![rim, tgt]);
+    }
+
+    /// Start the next live bias measurement when the previous one is done.
+    fn run_live_bias(&mut self) {
+        let ready = self.job.is_none()
+            && !self.frozen
+            && self.frame.is_some()
+            && self.calib.result.is_some_and(|r| r.coaxial)
+            && self.calib.live_next.is_none_or(|t| Instant::now() >= t);
+        if ready {
+            self.calibration_live_measure();
+        }
+    }
+
     fn store_calibration_sample(&mut self, step: usize, sample: RotationSample) {
+        self.calib.stop_live();
         self.calib.samples[step] = Some(sample);
         self.calib.result = match self.calib.samples {
             [Some(a), Some(b)] => Some(crate::calibrate::solve(&a, &b, crate::calibrate::COAXIAL_TOLERANCE)),
@@ -448,6 +499,25 @@ impl ColliViewApp {
                     (_, None) => self.error(format!("Calibration: could not find the target feature. {failed}")),
                 }
             }
+            // Dropped if the readout was turned off meanwhile. Misses only count, so a
+            // bad frame doesn't flood the status bar.
+            JobKind::LiveBias { target } if self.calib.live && self.calib.target == Some(target) => {
+                match (results.first().copied().flatten(), results.get(1).copied().flatten(), self.calib.result) {
+                    (Some(rim), Some(t), Some(result)) => {
+                        let rim = Measurement { center: rim.center, radius: rim.radius };
+                        // The rim moves with the camera: keep the circles on it.
+                        self.s.overlay.fit_reference(rim.center, rim.radius);
+                        if let Some(l) = self.s.overlay.layer_mut(target) {
+                            l.measured = Some(Measurement { center: t.center, radius: t.radius });
+                        }
+                        let sample = RotationSample { rim, target: t.center };
+                        self.calib.live_bias = Some(crate::calibrate::live_bias(&result, &sample));
+                        self.calib.live_failures = 0;
+                    }
+                    _ => self.calib.live_failures += 1,
+                }
+            }
+            JobKind::LiveBias { .. } => {}
         }
     }
 
@@ -541,7 +611,8 @@ impl ColliViewApp {
                 Color32::from_rgb(255, 170, 60),
             );
         }
-        if self.job.is_some() {
+        // The live bias readout runs jobs back to back; it shows in its own panel.
+        if self.job.as_ref().is_some_and(|j| !matches!(j.kind, JobKind::LiveBias { .. })) {
             painter.text(
                 rect.left_top() + vec2(12.0, 12.0),
                 Align2::LEFT_TOP,
@@ -742,7 +813,7 @@ impl ColliViewApp {
                 let d = self.s.overlay.center - ic;
                 ui.separator();
                 ui.label(format!("centre vs image centre: {:+.1}, {:+.1} px", d.x, d.y))
-                    .on_hover_text("Offset of the shared centre (focuser ring) from the sensor centre.\nAdjust the adapter's centring screws to bring this close to 0.");
+                    .on_hover_text("Offset of the shared centre (focuser ring) from the sensor centre.\nOnly needs to be roughly 0: centre the camera precisely with\nOff-centre camera calibration → Live.");
             }
             self.messages.retain(|m| m.at.elapsed() < Duration::from_secs(if m.error { 12 } else { 6 }));
             if let Some(m) = self.messages.last() {
@@ -763,6 +834,10 @@ impl eframe::App for ColliViewApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_worker();
         self.poll_job();
+        if self.calib.live {
+            self.run_live_bias();
+            ctx.request_repaint_after(LIVE_INTERVAL);
+        }
         if self.job.is_some() {
             ctx.request_repaint_after(Duration::from_millis(50));
         }

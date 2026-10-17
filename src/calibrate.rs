@@ -12,6 +12,13 @@
 //!
 //! Writing `b` into the layer's offset makes its circle land where a perfectly
 //! aligned telescope appears through this particular camera.
+//!
+//! `b` is parallax between the rim's depth and the feature's: it grows with how far the
+//! lens sits off the focuser axis, and a tilted camera alone doesn't cause it (tilt
+//! shifts every depth alike, and the overlays follow the rim). So turning the adapter's
+//! carrier screws until `b` ≈ 0 puts the lens on the axis, like a Cheshire's peephole.
+//! For that, [`live_bias`] reads `b` live with the adapter left at 180°, where a
+//! measurement is `m = b − v`: `b = m + v`.
 
 use egui::{Pos2, Vec2};
 
@@ -57,6 +64,15 @@ impl CalibrationResult {
 /// Default coaxiality tolerance: 1.5 % of the rim radius.
 pub const COAXIAL_TOLERANCE: f32 = 0.015;
 
+/// A live bias below this fraction of the rim radius counts as centred.
+pub const CENTRED_TOLERANCE: f32 = 0.0025;
+
+/// The camera bias right now, from a live sample with the adapter still at 180° (where
+/// m = b − v). Unlike `result.bias`, it follows the carrier screws as they turn.
+pub fn live_bias(result: &CalibrationResult, live: &RotationSample) -> Vec2 {
+    live.offset() + result.misalignment
+}
+
 pub fn solve(s0: &RotationSample, s180: &RotationSample, tolerance_frac: f32) -> CalibrationResult {
     let (m0, m180) = (s0.offset(), s180.offset());
     let rim_shift = (s180.rim.center - s0.rim.center).length();
@@ -90,6 +106,18 @@ mod tests {
         assert!((r.bias - b).length() < 1e-5);
         assert!((r.misalignment - v).length() < 1e-5);
         assert!(r.coaxial);
+    }
+
+    #[test]
+    fn live_bias_tracks_camera_shift() {
+        let rim = pos2(640.0, 480.0);
+        let (b, v) = (vec2(3.0, -1.5), vec2(-4.0, 2.0));
+        let r = solve(&sample(rim, 300.0, rim + b + v), &sample(rim, 300.0, rim + b - v), COAXIAL_TOLERANCE);
+        // Still at 180°, the screws move the camera: the bias changes, v stays.
+        let b2 = vec2(-0.5, 0.25);
+        let rim2 = rim + vec2(2.0, 1.0);
+        let live = live_bias(&r, &sample(rim2, 300.0, rim2 + b2 - v));
+        assert!((live - b2).length() < 1e-5, "{live:?} vs {b2:?}");
     }
 
     #[test]

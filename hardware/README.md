@@ -218,12 +218,30 @@ figures after changing the model.
 1. Insert the adapter. The flange must sit flat on the focuser. A compression-ring
    focuser is best; thumbscrews push the barrel to one side.
 2. In ColliView, **Auto-detect** the drawtube rim.
-3. Turn on **Image & view → Mark the sensor centre**, then turn the three carrier screws
-   until the status bar's *centre vs image centre* reads close to 0, 0.
-4. Run **Off-centre camera calibration** for the secondary and primary layers. It
-   measures at 0° and 180° adapter rotation and stores the remaining camera bias as
-   layer offsets. If it warns that the rim moved between the captures, the adapter
-   isn't rotating about the focuser axis: re-seat it and tighten the same way both times.
+3. **Rough:** turn on **Image & view → Mark the sensor centre**, then turn the three
+   carrier screws until the status bar's *centre vs image centre* is within a few % of
+   the frame. It doesn't need to be closer.
+4. **Fine:** in **Off-centre camera calibration**, pick the **secondary** layer, capture at
+   0°, turn the adapter 180° in the focuser and capture again. Leave the adapter there,
+   tick **Live**, and turn the carrier screws until *Camera bias now* reads about 0 (it
+   turns green). The lens now sits on the focuser axis.
+5. Untick **Live** (this clears the old captures) and calibrate each layer (secondary,
+   then primary) at 0° and 180°. Apply the small leftover bias as the layer's offset. If it warns that the rim
+   moved between the captures, the adapter isn't rotating about the focuser axis:
+   re-seat it and tighten the same way both times.
+
+**Why not just centre the rim on the sensor?** The carrier screws only move the camera
+sideways; how much it tilts is set by the print. A slightly tilted camera with the rim
+on the sensor centre ends up off the axis, so features deeper in the tube look shifted
+by a different amount than the rim (parallax). With the lens on the axis, like the
+peephole of a Cheshire, the tilt only shifts the whole picture evenly, and the circles
+follow the detected rim anyway. The camera bias that the 0°/180° calibration measures is
+exactly this off-axis error, so it is the right thing to null.
+
+**The telescope's own tilt can't get into the calibration.** The rim is the far end of
+the drawtube, which the adapter sits in, so it tilts with the focuser. And between the
+0° and 180° captures everything fixed to the telescope (secondary, primary and focuser
+tilt) flips sign and cancels; only what turns with the camera is kept.
 
 ## Sources
 

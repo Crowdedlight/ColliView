@@ -26,6 +26,7 @@ Runs on Windows and Linux; written in Rust with [egui](https://github.com/emilk/
 - **Off-centre camera calibration**: measure at 0° and 180° adapter rotation. ColliView separates the
   camera's own bias (off-centre sensor, tilt, parallax) from the telescope's real misalignment and stores
   the bias as a per-layer offset. It warns when the adapter didn't rotate about the focuser axis.
+  A **live bias readout** guides the adapter's carrier screws until the lens sits on the focuser axis.
 - **Software image tools**: brightness, contrast, gamma, invert, greyscale, frame averaging for a dim tube,
   and display flip / rotate 180°.
 - Freeze frame, PNG **snapshots** at sensor resolution (with or without overlays), **per-telescope profiles**
@@ -59,7 +60,8 @@ sudo usermod -aG video $USER   # access to /dev/video*; log in again afterwards
    Select the layer and click **Measure** to get the remaining offset in pixels.
 4. **Primary:** adjust the primary until its reflection, clips, the light ring's reflection and the centre spot
    line up with the red, magenta and cyan circles.
-5. If your camera isn't perfectly centred, run **Off-centre camera calibration** once per layer
+5. If your camera isn't perfectly centred, run **Off-centre camera calibration** on the secondary and
+   tick **Live** to centre the camera with the adapter's carrier screws. Then calibrate once per layer
    and save a **profile** for the telescope.
 
 | Input | Action |
