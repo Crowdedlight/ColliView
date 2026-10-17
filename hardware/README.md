@@ -106,8 +106,9 @@ This writes `out/`:
 | `barrel_2mm.stl`, `barrel_3mm.stl` | Barrel with flange and head floor. The acrylic recess depth matches the sheet thickness, so print the one for your acrylic. |
 | `head.stl` | The tube around the camera carrier, with the three centring-screw bosses. |
 | `carrier.stl`, `baffle.stl`, `retainer.stl`, `cap.stl` | The other printed parts, already in print orientation. |
+| `cap_test.stl` | Three caps with crush ribs at `cap_squeeze` ± 0.15 mm (0.25, 0.4, 0.55 by default), each engraved with its value inside. Try each in the head and keep the one that holds firmly but still comes off; set `cap_squeeze` to its value for later builds. Print it instead of `cap.stl`. |
 | `tolerance_test.stl` | Seven barrel rings from −0.3 to +0.3 mm with the diameter engraved. **Print this first.** |
-| `fit_test.stl` | A peg and five rings with total gaps of 0.1–0.5 mm engraved. **Print this first** too. |
+| `fit_test.stl` | A peg and five rings engraved with their total gaps, `fit_gap` ± 0.2 mm (0–0.35 mm by default). **Print this first** too. |
 | `diffuser_2mm.dxf/.svg`, `diffuser_3mm.dxf/.svg` | The laser-cut ring. |
 
 **Printing.** PETG or ASA, matte black. Use 4 perimeters for a round, stiff barrel.
@@ -124,13 +125,18 @@ Every STL is oriented to print without supports:
 Try the tolerance rings in your focuser and set `barrel_od` to the snug one.
 
 **Fits.** `fit_gap` is the total gap (hole Ø − part Ø) between printed parts that slide
-together. The default is 0.3 mm. It applies to the head's spigot in the flange groove,
-the baffle in the barrel floor and its counterbore, the cap lip in the head, and the
-camera PCB in the carrier pocket. Push the fit-test peg through the rings and set
-`fit_gap` to the ring it passes through without play. Most of these fits have one side
+together, so each side gets half of it. The default is 0.15 mm. It applies to the head's
+spigot in the flange groove, the baffle in the barrel floor and its counterbore, and
+the camera PCB in the carrier pocket. On a board with mounting holes
+the screws locate the PCB, so its pocket gets 3 × `fit_gap` (28.45 mm for the 28 mm
+`imx179_db05`). The pocket has round reliefs in its corners, since printed inside corners
+round off and would catch the PCB's sharp corners. Push the fit-test peg through the rings and set `fit_gap` to the ring it
+passes through without play. Most of these fits have one side
 on the first layer, so `bed_chamfer` (0.4 mm) bevels those edges against elephant's foot.
 These are not slide fits and have their own settings:
 * the retainer is a press fit (`press_fit`)
+* the cap is held by eight crush ribs on its lip (`cap_squeeze`); the lip itself has the
+  slide fit, so it centres the cap
 * the carrier floats in the head by `float`
 * the barrel is tuned to the focuser with `barrel_od`
 * the insert holes follow the insert maker's table
@@ -194,12 +200,18 @@ figures after changing the model.
    carrier's bosses, flush with their tops. Fit the PCB into the carrier with the lens
    down through the floor, and fix it with M2×5 screws (or M2×4). Put the carrier in
    the head with its notch at the marks. Solder the LED wires through the resistor and
-   trimmer to the board's 5V and GND pads.
+   trimmer to the board's 5V and GND pads. Keep the trimmer and the JST plug away from
+   the head's wall, or lay the trimmer flat: the cap's lip reaches 5 mm down inside the
+   wall.
 
    ![The head from above after step 5, with the cap off: the mark and the carrier notch
    on the wire side, and the three centring screws.](img/assembly_top.png)
-6. Plug in USB, set the trimmer to 30–50 mA (measure with a multimeter), close the cap
-   and zip-tie the cable for strain relief.
+6. Plug in USB, set the trimmer to 30–50 mA (measure with a multimeter), push the cap in
+   until it sits on the head's rim, and zip-tie the cable for strain relief. The crush
+   ribs on its lip hold it without glue. To open it, twist a small flat screwdriver in
+   one of the two notches at the rim. If it gets loose after many openings, reprint it
+   with a larger `cap_squeeze`. A hard tug on the cable pops the cap off rather than
+   pulling on the board's header.
 
 ## 5. Centre the camera with ColliView
 

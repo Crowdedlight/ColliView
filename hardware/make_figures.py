@@ -33,7 +33,7 @@ WHITE = (255, 255, 255)
 
 # side, step (None = no badge), title, detail, anchors
 EXPLODED_LABELS = [
-    ("left", 6, "Cap", "close it, zip-tie the cable", ["cap"]),
+    ("left", 6, "Cap", "push in, ribs hold it; zip-tie the cable", ["cap"]),
     ("left", 5, "Camera board", "lens down through the carrier", ["camera"]),
     ("left", 5, "Carrier", "notch on the wire side", ["carrier_notch"]),
     ("left", 1, "Marks", "line up head and flange", ["head_mark", "flange_mark"]),
@@ -47,7 +47,7 @@ EXPLODED_LABELS = [
     ("right", 4, "Retainer", "pressed onto the baffle", ["retainer"]),
 ]
 SECTION_LABELS = [
-    ("left", 6, "Cap", "lip inside the head", ["sv_cap"]),
+    ("left", 6, "Cap", "crush ribs grip the head", ["sv_cap"]),
     ("left", 5, "Camera board", "lens down into the baffle", ["sv_camera"]),
     ("left", 1, "Head", "spigot glued in the groove", ["sv_spigot"]),
     ("left", 2, "LED wires", "up the channel", ["sv_wires"]),

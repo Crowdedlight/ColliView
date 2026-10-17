@@ -10,7 +10,7 @@
 // Or run build.ps1 / build.sh to export everything.
 
 /* [Part] */
-part = "assembly"; // [assembly, section, exploded, top_view, barrel, head, carrier, baffle, retainer, cap, tolerance_test, fit_test, diffuser_2d]
+part = "assembly"; // [assembly, section, exploded, top_view, barrel, head, carrier, baffle, retainer, cap, cap_test, tolerance_test, fit_test, diffuser_2d]
 
 /* [Focuser fit] */
 // 2" = 50.8 nominal; print tolerance_test first and pick the ring that fits. 1.25" = 31.6
@@ -64,14 +64,18 @@ led_units = 5;
 led_strip_w = 5;
 // Gap left in the ring for the wires
 wire_gap = 8;
+// Diameter of the sloped wire channel from the chamber up into the head
+wire_hole_d = 4;
 
 /* [Printing] */
-// Total gap (hole diameter - part diameter) between printed parts that slide together; print fit_test to find yours
+// Total gap (hole diameter - part diameter, half of it per side) between printed parts that slide together; print fit_test to find yours
 fit_gap = 0.15;
 // 45 deg chamfer where a fit starts on the first layer, against elephant's foot
 bed_chamfer = 0.4;
 // Interference of the retainer on the baffle tube
 press_fit = 0.15;
+// Interference of the cap's crush ribs in the head (on the diameter, over a fit without play); print cap_test to find yours
+cap_squeeze = 0.4;
 // Added to the insert maker's minimum wall around an insert hole
 insert_margin = 0.3;
 // Plastic left past the end of an insert hole: closes the PCB bosses' blind holes, and
@@ -140,6 +144,8 @@ carrier_floor_t = 2;
 // PCB supports. On mounting holes they are bosses with blind insert holes, tall enough
 // that insert_skin closes them: melt must not reach the carrier's sliding underside.
 has_holes = holes[0] > 0 && holes[1] > 0;
+// The screws locate a board with mounting holes, so its pocket only has to clear it.
+pcb_gap = (has_holes ? 3 : 1) * fit_gap;
 boss_h = has_holes ? max(1.5, ins_hole_depth(pcb_ins) + insert_skin - carrier_floor_t) : 1.5;
 pcb_boss_d = ins_boss_d(pcb_ins);
 pcb_boss_xy = has_holes ? [for (sx = [-1, 1], sy = [-1, 1])
@@ -163,7 +169,12 @@ centring_screw_len = screw_at_least(centring_screw_min);
 pcb_screw_max = pcb[2] + ins_hole_depth(pcb_ins);
 pcb_screw_len = screw_at_most(pcb_screw_max);
 cap_t = 2.5;
-cap_lip = 3;
+cap_lip = 5;
+// Crush ribs on the cap's lip hold it in the head. They fade into the lip over
+// cap_rib_lead at its bottom edge, so the cap starts easily.
+cap_ribs = 8;
+cap_rib_d = 2;
+cap_rib_lead = 1.5;
 spigot_h = 2;
 spigot_w = 1.2;
 
@@ -182,16 +193,23 @@ acrylic_od = recess_d - 2 * acrylic_clear;
 acrylic_id = baffle_od + 2 * acrylic_clear;
 strip_len = led_unit * led_units;
 strip_room = PI * bore_d - wire_gap;
-wire_in_r = bore_d / 2 - 1.8;
-wire_out_r = head_id / 2 - 2;     // under the carrier's wire notch, clear of the spigot
+wire_in_r = bore_d / 2 - wire_hole_d / 2 - 0.5;    // inside the bore, clear of the barrel wall
+wire_out_r = head_id / 2 - wire_hole_d / 2 - 0.7;  // under the carrier's wire notch, clear of the spigot
+wire_notch_w = wire_hole_d + 1.4;
 
 assert(strip_len <= strip_room,
     str("LED strip (", strip_len, " mm) does not fit the chamber (", strip_room, " mm available): use fewer units"));
 assert(acrylic_od - acrylic_id >= 8, "Diffuser ring is too narrow: the baffle is too wide for this barrel");
-assert(baffle_flange_d / 2 + 1 < wire_in_r, "No room for the wire hole next to the baffle flange");
+assert(baffle_flange_d / 2 + 1 < wire_in_r - wire_hole_d / 2,
+    "No room for the wire hole next to the baffle flange: use a smaller wire_hole_d");
+assert(wire_out_r - wire_notch_w / 2 > max([-lens_off[0] + (pcb[0] + pcb_gap) / 2,
+                                            for (c = pcb_boss_xy) c[0] + pcb_boss_d / 2]) + 1,
+    "The carrier's wire notch cuts into the PCB pocket: use a smaller wire_hole_d");
 assert(lens_z > baffle_bottom + 5, "lens_drop is too large: the lens would stick out of the baffle");
 assert(screw_z - head_floor_top + ins_thread(centring_ins) / 2 <= carrier_h,
     "The centring screws would pass over the carrier: use a smaller centring_insert");
+assert(head_top - cap_lip >= head_floor_top + carrier_h + 4,
+    "The cap's lip reaches down to the camera board: use a shorter cap_lip");
 for (c = pcb_boss_xy) {
     assert(max(abs(c[0]) - (holder[0] + 1) / 2, abs(c[1]) - (holder[1] + 1) / 2) >= pcb_boss_d / 2,
         "The lens holder cut-out cuts into a PCB boss: use a smaller pcb_insert");
@@ -252,8 +270,8 @@ module barrel_part() {
         bed_hole_chamfer(baffle_flange_d + fit_gap, head_floor_top);
         // Sloped wire channel from the chamber up into the head.
         hull() {
-            translate([wire_in_r, 0, barrel_len - 0.5]) cylinder(d = 2.6, h = 0.1, $fn = 24);
-            translate([wire_out_r, 0, head_floor_top]) cylinder(d = 2.6, h = 0.5, $fn = 24);
+            translate([wire_in_r, 0, barrel_len - 0.5]) cylinder(d = wire_hole_d, h = 0.1, $fn = 32);
+            translate([wire_out_r, 0, head_floor_top]) cylinder(d = wire_hole_d, h = 0.5, $fn = 32);
         }
         // Groove for the head's spigot.
         translate([0, 0, head_floor_top - spigot_h - 0.3]) difference() {
@@ -292,7 +310,7 @@ module head() {
 }
 
 module carrier() {
-    pocket = [pcb[0] + fit_gap, pcb[1] + fit_gap];
+    pocket = [pcb[0] + pcb_gap, pcb[1] + pcb_gap];
     translate([0, 0, head_floor_top]) difference() {
         union() {
             difference() {
@@ -300,6 +318,11 @@ module carrier() {
                 // PCB pocket, placed so the lens sits on the optical axis.
                 translate([-lens_off[0] - pocket[0] / 2, -lens_off[1] - pocket[1] / 2, carrier_floor_t])
                     cube([pocket[0], pocket[1], carrier_h]);
+                // Round reliefs in its corners: printed inside corners round off, and the
+                // PCB's sharp corners would catch on them.
+                for (sx = [-1, 1], sy = [-1, 1])
+                    translate([-lens_off[0] + sx * pocket[0] / 2, -lens_off[1] + sy * pocket[1] / 2, carrier_floor_t])
+                        cylinder(d = 1.5, h = carrier_h, $fn = 16);
             }
             // PCB supports: bosses on the mounting holes, or corner pads.
             for (c = pcb_boss_xy) translate(c) cylinder(d = pcb_boss_d, h = carrier_floor_t + boss_h, $fn = 32);
@@ -313,8 +336,8 @@ module carrier() {
             cylinder(d = ins_hole_d(pcb_ins), h = carrier_h, $fn = 32);
         // Lens holder through the floor (the lens is on the axis).
         translate([-(holder[0] + 1) / 2, -(holder[1] + 1) / 2, -1]) cube([holder[0] + 1, holder[1] + 1, carrier_h + 2]);
-        // Notch for the LED wires, lined up with the mark on the head.
-        translate([carrier_od / 2 - 2, -2, -1]) cube([4, 4, carrier_h + 2]);
+        // Notch for the LED wires over the wire channel, lined up with the mark on the head.
+        translate([wire_out_r - wire_notch_w / 2, -wire_notch_w / 2, -1]) cube([carrier_od / 2, wire_notch_w, carrier_h + 2]);
     }
 }
 
@@ -338,17 +361,41 @@ module retainer() {
     }
 }
 
-module cap() {
+// Held in the head by friction: the lip has the slide fit, so it centres the cap, and
+// its crush ribs reach `squeeze` (on the diameter) past it. `label` is engraved on the
+// underside, inside the lip.
+module cap(squeeze = cap_squeeze, label = "") {
     cable_d = 5;
+    lip_r = (head_id - fit_gap) / 2;
+    rib_r = lip_r + squeeze / 2 - cap_rib_d / 2;    // rib centre: its outer edge at lip_r + squeeze / 2
     translate([0, 0, head_top]) difference() {
         union() {
             cylinder(d = head_od, h = cap_t);
-            translate([0, 0, -cap_lip]) cylinder(d = head_id - fit_gap, h = cap_lip);
+            translate([0, 0, -cap_lip]) cylinder(d = 2 * lip_r, h = cap_lip);
+            for (i = [0 : cap_ribs - 1]) rotate([0, 0, i * 360 / cap_ribs]) hull() {
+                translate([rib_r, 0, cap_rib_lead - cap_lip]) cylinder(d = cap_rib_d, h = cap_lip - cap_rib_lead, $fn = 24);
+                translate([lip_r - 0.5, 0, -cap_lip]) cylinder(d = 0.1, h = 0.01, $fn = 8);
+            }
         }
         translate([0, 0, -cap_lip - 1]) cylinder(d = head_id - fit_gap - 4, h = cap_lip + 1);
         translate([0, 0, -cap_lip - 1]) cylinder(d = cable_d, h = cap_lip + cap_t + 2, $fn = 32);
         // Zip-tie slots for strain relief.
         for (s = [-1, 1]) translate([-2, s * (cable_d / 2 + 3) - 0.75, -1]) cube([4, 1.5, cap_t + 2]);
+        // Notches in the underside, to lever the cap off the head's rim with a small screwdriver.
+        for (a = [90, 270]) rotate([0, 0, a]) translate([head_id / 2 + 0.5, -3, -1]) cube([head_od, 6, 2]);
+        // Mirrored, so that it reads the right way round on the underside.
+        if (label != "")
+            translate([0, -15, -0.01]) linear_extrude(0.61) mirror([0, 1, 0])
+                text(label, size = 5, halign = "center", valign = "center");
+    }
+}
+
+// Three caps with crush ribs at cap_squeeze - 0.15, + 0 and + 0.15, each engraved with
+// its value inside. Keep the one that holds firmly in the head but still comes off.
+module cap_test() {
+    for (i = [0 : 2]) {
+        s = max(0, cap_squeeze + (i - 1) * 0.15);
+        translate([i * (head_od + 6), 0, 0]) flipped(head_top + cap_t) cap(s, str(s));
     }
 }
 
@@ -695,6 +742,7 @@ else if (part == "carrier") translate([0, 0, -head_floor_top]) carrier();
 else if (part == "baffle") flipped(head_floor_top) baffle();       // flange on the bed
 else if (part == "retainer") translate([0, 0, -baffle_bottom]) retainer();
 else if (part == "cap") flipped(head_top + cap_t) cap();           // flat top on the bed
+else if (part == "cap_test") cap_test();                           // flips the caps itself
 else if (part == "tolerance_test") tolerance_test();
 else if (part == "fit_test") fit_test();
 else if (part == "diffuser_2d") diffuser_2d();

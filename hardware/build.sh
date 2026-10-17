@@ -15,7 +15,7 @@ for t in 2 3; do
     "$OPENSCAD" -o "out/diffuser_${t}mm.dxf" -D 'part="diffuser_2d"' -D "acrylic_t=$t" "$@" colliview_adapter.scad
     "$OPENSCAD" -o "out/diffuser_${t}mm.svg" -D 'part="diffuser_2d"' -D "acrylic_t=$t" "$@" colliview_adapter.scad
 done
-for p in head carrier baffle retainer cap tolerance_test fit_test; do
+for p in head carrier baffle retainer cap cap_test tolerance_test fit_test; do
     "$OPENSCAD" -o "out/$p.stl" -D "part=\"$p\"" "$@" colliview_adapter.scad
 done
 echo "Done: $(ls out | wc -l) files in $(pwd)/out"
