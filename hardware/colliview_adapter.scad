@@ -10,7 +10,7 @@
 // Or run build.ps1 / build.sh to export everything.
 
 /* [Part] */
-part = "assembly"; // [assembly, section, exploded, top_view, barrel, head, carrier, baffle, retainer, cap, cap_test, tolerance_test, fit_test, diffuser_2d]
+part = "assembly"; // [assembly, section, exploded, top_view, barrel, head, carrier, baffle, retainer, cap, cap_test, tolerance_test, fit_test, jig, diffuser_2d]
 
 /* [Focuser fit] */
 // 2" = 50.8 nominal; print tolerance_test first and pick the ring that fits. 1.25" = 31.6
@@ -88,6 +88,18 @@ insert_margin = 0.3;
 // is the stop in the centring bosses
 insert_skin = 1;
 $fn = 128;
+
+/* [Centring jig] */
+// Total gap of the jig's socket on the barrel; like fit_gap, but any play here reads as lens offset
+jig_gap = 0.15;
+// Wide aperture just below the barrel: diameter, and its edge below the barrel's bottom face
+jig_near_d = 16;
+jig_near_drop = 8;
+// Small hole in the floor, lit from behind: diameter, and distance from the front of the lens
+jig_hole_d = 6;
+jig_far_dist = 100;
+jig_wall = 2.4;
+jig_floor_t = 2;
 
 // ------------------------------------------------------------------ presets
 // [pcb [w, h, t], holes [x, y], holder [w, h], lens offset [x, y], lens body d, lens drop]
@@ -197,6 +209,16 @@ baffle_od = baffle_id + 2 * baffle_wall;
 baffle_flange_d = baffle_od + 8;
 baffle_flange_t = 2;
 
+// The centring jig: the barrel's socket, a funnel down to the wide aperture, and the floor
+// with the small hole. All world z, like the adapter it holds.
+jig_bore = barrel_od + jig_gap;
+jig_near_z = -jig_near_drop;
+jig_far_z = lens_z - jig_far_dist;                 // top of the floor
+jig_bottom = jig_far_z - jig_floor_t;
+jig_near_dist = lens_z - jig_near_z;
+// The camera sees out through the baffle's bottom edge.
+view_half = atan((baffle_id / 2) / (lens_z - baffle_bottom));
+
 acrylic_od = recess_d - 2 * acrylic_clear;
 acrylic_id = baffle_od + 2 * acrylic_clear;
 strip_len = led_unit * led_units;
@@ -218,6 +240,13 @@ assert(wire_out_r - wire_notch_w / 2 > max([-lens_off[0] + (pcb[0] + pcb_gap) / 
 assert(lens_z > baffle_bottom + 5, "lens_drop is too large: the lens would stick out of the baffle");
 assert(screw_z - head_floor_top + ins_thread(centring_ins) / 2 <= carrier_h,
     "The centring screws would pass over the carrier: use a smaller centring_insert");
+assert(jig_near_z < baffle_bottom - 1, "The jig's aperture would touch the baffle: use a larger jig_near_drop");
+assert(atan((jig_near_d / 2) / jig_near_dist) < view_half - 0.5,
+    "The jig's aperture is wider than the camera sees through the baffle: use a smaller jig_near_d");
+assert((jig_hole_d / 2) / jig_far_dist < (jig_near_d / 2) / jig_near_dist,
+    "The jig's hole is hidden behind the aperture: use a smaller jig_hole_d");
+assert(jig_far_z < jig_near_z - 2 * (jig_bore - jig_near_d) / 2 - 3,
+    "The jig's floor meets the funnel: use a larger jig_far_dist");
 assert(head_top - cap_lip >= head_floor_top + carrier_h + 4,
     "The cap's lip reaches down to the camera board: use a shorter cap_lip");
 for (c = pcb_boss_xy) {
@@ -240,6 +269,8 @@ if (carrier_fit == "floating")
              " screws (at least ", round(centring_screw_min * 10) / 10, " mm)"));
 else
     echo("  Centring screws: not needed with the fixed carrier");
+echo(str("  Centring jig: aperture Ø", jig_near_d, " at ", jig_near_dist, " mm, hole Ø", jig_hole_d, " at ",
+         jig_far_dist, " mm from the lens (enter these in ColliView's jig dimensions)"));
 if (has_holes)
     echo(str("  PCB screws: ", pcb_insert, " inserts, M", ins_thread(pcb_ins), " x ", pcb_screw_len,
              " screws (at most ", round(pcb_screw_max * 10) / 10, " mm)"));
@@ -461,6 +492,32 @@ module fit_test() {
             translate([d / 2 + 9.4, 0, 1.2]) linear_extrude(1)
                 text(str(gaps[i]), size = 3.5, halign = "center", valign = "center");
         }
+    }
+}
+
+// The centring jig: holds the adapter by its barrel, like the focuser, with two holes on
+// its axis. The wide aperture's edge is the top of a 45° funnel; under it, the funnel
+// steepens so the edge stays sharp and prints without supports. The small hole is in the
+// floor, which prints on the bed. Stand it on a backlight. Seen through the camera, the
+// two centres coincide when the lens is on the barrel's axis (see src/jig.rs).
+module jig() {
+    r1 = jig_near_d / 2;
+    rb = jig_bore / 2;
+    ro = rb + jig_wall;
+    land = 0.6;
+    top_at_wall = jig_near_z - (rb - r1);
+    under_at_wall = jig_near_z - land - 2 * (rb - r1);
+    difference() {
+        rotate_extrude($fn = 256) polygon([
+            [jig_hole_d / 2, jig_bottom], [ro, jig_bottom], [ro, barrel_len], [rb, barrel_len],
+            [rb, top_at_wall], [r1, jig_near_z], [r1, jig_near_z - land], [rb, under_at_wall],
+            [rb, jig_far_z], [jig_hole_d / 2, jig_far_z],
+        ]);
+        translate([0, 0, jig_bottom]) mirror([0, 0, 1]) {
+            bed_hole_chamfer(jig_hole_d, 0);
+            bed_edge_chamfer(2 * ro, 0);
+        }
+        bed_hole_chamfer(jig_bore, barrel_len);    // the barrel's way in
     }
 }
 
@@ -763,5 +820,6 @@ else if (part == "cap") flipped(head_top + cap_t) cap();           // flat top o
 else if (part == "cap_test") cap_test();                           // flips the caps itself
 else if (part == "tolerance_test") tolerance_test();
 else if (part == "fit_test") fit_test();
+else if (part == "jig") translate([0, 0, -jig_bottom]) jig();   // floor on the bed
 else if (part == "diffuser_2d") diffuser_2d();
 else assert(false, str("unknown part '", part, "'"));

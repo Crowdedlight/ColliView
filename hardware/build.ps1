@@ -23,7 +23,7 @@ foreach ($t in 2, 3) {
     Run "-o out/diffuser_${t}mm.dxf -D part=\`"diffuser_2d\`" -D acrylic_t=$t"
     Run "-o out/diffuser_${t}mm.svg -D part=\`"diffuser_2d\`" -D acrylic_t=$t"
 }
-foreach ($p in "head", "carrier", "baffle", "retainer", "cap", "cap_test", "tolerance_test", "fit_test") {
+foreach ($p in "head", "carrier", "baffle", "retainer", "cap", "cap_test", "tolerance_test", "fit_test", "jig") {
     Run "-o out/$p.stl -D part=\`"$p\`""
 }
 Write-Output "Done: $((Get-ChildItem out).Count) files in $PSScriptRoot\out"

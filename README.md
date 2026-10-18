@@ -23,13 +23,10 @@ Runs on Windows and Linux; written in Rust with [egui](https://github.com/emilk/
 - **Auto-detect** fits the focuser ring and the shared centre to the drawtube edge with sub-pixel accuracy
   (radial edge search, RANSAC, geometric least squares), shown as a preview you accept or reject.
   **Measure** fits any other layer's feature and reports how far off it is.
-- **Off-centre camera calibration**: measure at 0° and 180° adapter rotation. ColliView separates the
-  camera's own bias (off-centre sensor, tilt, parallax) from the telescope's real misalignment. It warns
-  when the adapter didn't rotate about the focuser axis. All layers always share the reference's centre.
-  A **live bias readout** guides the adapter's carrier screws until the lens sits on the focuser axis.
-  For that, a **paper target** taped inside the tube (the printable [centring target](calibration/README.md),
-  or squared paper with a few pen marks) is matched between the two captures and compared with the
-  sensor centre, so the readout doesn't depend on fitting any circle.
+- All layers share the reference ring's centre, so lining features up on one centre is all there is to it.
+- **Camera centring check** with a printable two-depth **jig**: a live readout shows how far the lens sits
+  off the barrel's axis, in mm, and which way to push the camera board. A sensor a few pixels off-centre or
+  a tilted camera doesn't matter; the circles follow the drawtube. See [hardware/ §5](hardware/README.md#5-check-the-camera-centring).
 - **Software image tools**: brightness, contrast, gamma, invert, greyscale, frame averaging for a dim tube,
   and display flip / rotate 180°.
 - Freeze frame, PNG **snapshots** at sensor resolution (with or without overlays), **per-telescope profiles**
@@ -63,10 +60,8 @@ sudo usermod -aG video $USER   # access to /dev/video*; log in again afterwards
    Select the layer and click **Measure** to get the remaining offset in pixels.
 4. **Primary:** adjust the primary until its reflection, clips, the light ring's reflection and the centre spot
    line up with the red, magenta and cyan circles.
-5. If your camera isn't perfectly centred, tape the [centring target](calibration/README.md) inside the
-   tube and run **Off-centre camera calibration → Paper target**. Tick **Live** to centre the camera with
-   the adapter's carrier screws. Then remove the paper, Auto-detect again and save a **profile** for the
-   telescope.
+5. Save a **profile** for the telescope. Check the camera's centring once with the
+   [centring jig](hardware/README.md#5-check-the-camera-centring) (**Camera centring (jig)**).
 
 | Input | Action |
 |---|---|
@@ -88,13 +83,12 @@ sudo usermod -aG video $USER   # access to /dev/video*; log in again afterwards
 | `src/camera/controls/` | Native controls. nokhwa can't switch a control from auto to manual on Windows, so ColliView opens a second Media Foundation source (Windows) or `/dev/videoN` handle (Linux) just for controls. |
 | `src/view.rs` | The sensor↔screen transform shared by the texture and the overlays. |
 | `src/overlay/` | Layers, presets, resolution changes. |
-| `src/detect.rs`, `src/calibrate.rs` | Circle detection and the rotation calibration. |
-| `src/register.rs` | Matches two views of the paper target (pyramid, ZNCC search, Gauss–Newton affine fit). |
-| `src/target.rs`, `examples/make_target.rs` | The centring target's pattern, and the generator of [`calibration/centring_target.pdf`](calibration/). |
-| `src/camera/test_pattern.rs` | The simulated Newtonian (or a paper target), also used by the tests. |
+| `src/detect.rs` | Circle detection. |
+| `src/jig.rs` | The centring jig's geometry: lens offset in mm from its two fitted holes. |
+| `src/camera/test_pattern.rs` | The simulated Newtonian (or the view into the jig), also used by the tests. |
 | `examples/controls_spike.rs` | The Windows check that manual focus works while streaming. |
 
 ```sh
-cargo test     # transforms, circle fitting, detection, calibration, processing, profiles
+cargo test     # transforms, circle fitting, detection, the jig readout, processing, profiles
 cargo clippy --all-targets
 ```

@@ -110,6 +110,7 @@ This writes `out/`:
 | `cap_test.stl` | Three caps with crush ribs at `cap_squeeze` ± 0.15 mm (0.25, 0.4, 0.55 by default), each engraved with its value inside. Try each in the head and keep the one that holds firmly but still comes off; set `cap_squeeze` to its value for later builds. Print it instead of `cap.stl`. |
 | `tolerance_test.stl` | Seven barrel rings from −0.3 to +0.3 mm with the diameter engraved. **Print this first.** |
 | `fit_test.stl` | A peg and five rings engraved with their total gaps, `fit_gap` ± 0.2 mm (0–0.35 mm by default). **Print this first** too. |
+| `jig.stl` | The centring jig (§5). It stands on a backlight with the adapter in it. |
 | `diffuser_2mm.dxf/.svg`, `diffuser_3mm.dxf/.svg` | The laser-cut ring. |
 
 **Printing.** PETG or ASA, matte black. Use 4 perimeters for a round, stiff barrel.
@@ -147,8 +148,8 @@ These are not slide fits and have their own settings:
 **Fixed or floating carrier.** By default (`carrier_fit = "fixed"`) the carrier fills the
 head's bore, `fixed_gap` (0.1 mm) smaller than it, so the lens sits on the axis by itself.
 Its bottom edge is bevelled against elephant's foot, which would otherwise make it bind.
-This assumes the board has its lens centred over the sensor. ColliView's paper target (§5)
-shows how far off it is, and **Layer circle** checks it against the secondary. The head is
+The board's screws locate it within about ±0.25 mm. The centring jig (§5) checks the lens
+position, and lets you trim it within that play. The head is
 the same for both fits, so a head printed for the floating carrier takes the fixed one;
 leave its centring screws out. With `carrier_fit = "floating"` the carrier is 3 mm smaller
 and is centred with the three screws, but their tips can dent the print, which makes fine
@@ -226,66 +227,78 @@ figures after changing the model.
    with a larger `cap_squeeze`. A hard tug on the cable pops the cap off rather than
    pulling on the board's header.
 
-## 5. Centre the camera with ColliView
+## 5. Check the camera centring
 
-1. Insert the adapter. The flange must sit flat on the focuser. A compression-ring
-   focuser is best; thumbscrews push the barrel to one side.
-2. In ColliView, **Auto-detect** the drawtube rim.
+**How much it matters.** ColliView fits the shared centre to the drawtube rim. A sensor
+that sits a few pixels off the lens, or a slightly tilted camera, shifts every feature by
+the same amount, so neither makes any difference. What counts is how far the *lens* sits
+off the focuser axis, in millimetres: then nearer and farther features shift by different
+amounts. Through the usual steps that works out as follows:
 
-   **Fixed carrier:** there are no screws to turn, so skip steps 3 and 4. You can still
-   run step 4's two captures once, without Live: the camera bias shows how far the lens sits
-   off the axis. Then go on with step 5.
-3. **Rough:** turn on **Image & view → Mark the sensor centre**, then turn the three
-   carrier screws until the status bar's *centre vs image centre* is within a few % of
-   the frame. It doesn't need to be closer.
-4. **Fine:** tape a printout of [`calibration/centring_target.pdf`](../calibration/README.md)
-   flat inside the tube, in front of the focuser and as far down as you can. Squared paper
-   with a few bold pen marks works too. In **Off-centre camera calibration → Paper target**,
-   capture at 0°, turn the adapter 180° in the focuser and capture again. Leave the adapter
-   there, tick **Live**, and turn the carrier screws until *Camera bias now* reads about 0
-   (it turns green, and the cyan ✕ sits on the ○ at the sensor centre). The lens now sits
-   on the focuser axis, as far as the camera looks straight down the focuser (see below).
+* **Centring the secondary** under the drawtube: off by less than the lens offset, which
+  doesn't matter.
+* **Aiming the secondary** (centre spot on the rim's centre): off by about 8 × the lens offset on
+  the primary. That only tilts the eyepiece's view by hundredths of a degree.
+* **Tilting the primary**, the adjustment that matters: off by about **half the lens offset**
+  at the focal plane, like a Cheshire whose peephole is off-centre.
 
-   Without a paper target, use **Layer circle** with the **secondary** layer the same way.
-   It compares two depths (the rim and the secondary), so it doesn't need the camera to look
-   straight down the focuser. But it fits the rim and the secondary's outline instead of
-   matching the paper, which is less steady.
-5. Untick **Live** (this clears the old captures), remove the paper and **Auto-detect** the
-   drawtube again: the screws have moved it. To check the result, run **Layer circle** on the
-   secondary at 0° and 180°: it shows the camera bias that is left and the telescope's own
-   misalignment separately. All circles stay on the rim's centre, so the bias isn't stored
-   anywhere; it only tells you how well the camera is centred. If it warns that the rim moved
-   between the captures, the adapter isn't rotating about the focuser axis: re-seat it and
-   tighten the same way both times.
+Play of the barrel in the focuser counts in full, though, because the light ring moves
+with it. So the primary ends up off by about lens offset / 2 + barrel play. The usual
+tolerance shrinks with the cube of the f-ratio. A tenth or two of a millimetre is fine
+around f/5, while f/4 and faster leave much less.
 
-**Why not just centre the rim on the sensor?** The carrier screws only move the camera
-sideways; how much it tilts is set by the print. A slightly tilted camera with the rim
-on the sensor centre ends up off the axis, so features deeper in the tube look shifted
-by a different amount than the rim (parallax). With the lens on the axis, like the
-peephole of a Cheshire, the tilt only shifts the whole picture evenly, and the circles
-follow the detected rim anyway. The camera bias that the 0°/180° calibration measures is
-exactly this off-axis error, so it is the right thing to null.
+The fixed carrier holds the lens within about ±0.25 mm. That covers the play of the M2
+screws in the board's holes, and the lens's own placement on the board. So:
 
-**How the paper target measures it.** Turning the adapter 180° turns the paper's image
-about one point: where the focuser axis meets the paper. ColliView matches the whole
-pattern between the two captures to find that point (the cyan ✕), so it measures the axis
-the adapter really turns about, with no circle to fit. The paper is fixed to the telescope,
-so where it sits doesn't matter. Only the paper is measured, so the drawtube rim needn't be
-fitted, and the yellow ring just masks it out.
+1. **Seat the barrel well.** A compression-ring focuser is best; thumbscrews push the
+   barrel to one side. Take `barrel_od` from `tolerance_test.stl`.
+2. **Check, and if needed trim, the lens position with the jig** below.
 
-**What it assumes.** The bias is that point minus the sensor centre. That puts the lens on
-the axis if the camera looks straight down the focuser: the board square to the axis, which
-the flange and the carrier seat are printed for, and the lens centred over the sensor. This
-is the same assumption as the rough step's *centre vs image centre*, measured from the
-rotation instead of the rim's edge. A tilt, or a lens that sits off the sensor centre (on
-cheap modules it can be tens of pixels), moves that target, which leaves the lens a
-millimetre or so off the axis at the paper's distance. **Layer circle** (step 5) shows what
-is left.
+**The centring jig** (`jig.stl`) holds the adapter by its barrel, like the focuser does. It
+has two holes on its axis: a Ø16 mm aperture just below the barrel, and a Ø6 mm hole in its
+floor. Seen through the camera, their centres line up exactly when the lens is on the
+barrel's axis, whatever the tilt or the sensor's offset. A lens offset shows up at about
+30 px per mm at full resolution.
 
-**The telescope's own tilt can't get into the calibration.** The rim is the far end of
-the drawtube, which the adapter sits in, so it tilts with the focuser. And between the
-0° and 180° captures everything fixed to the telescope (secondary, primary and focuser
-tilt) flips sign and cancels; only what turns with the camera is kept.
+1. Print `jig.stl` floor-down; it needs no supports. The model's console prints the jig's
+   dimensions (`Centring jig: …`). With non-default settings, enter them in ColliView under
+   **Camera centring (jig) → Jig dimensions**.
+2. Stand the jig on a backlight, such as a phone showing a white screen or a light pad. Put
+   the adapter in, with the flange on the rim.
+3. In ColliView, open **Camera centring (jig)**, click **Find aperture** and Accept the
+   preview, so the yellow ring goes on the aperture. Plain Auto-detect can lock onto the
+   baffle's edge just outside it instead. If the aperture's edge is too dark, dim the
+   backlight or set the exposure by hand.
+4. Tick **Live**. It reads the lens offset in mm, and an arrow in the view shows which way
+   to push the board. Check the arrow with a small nudge first, as some cameras mirror the
+   image.
+5. Loosen the board's M2 screws a little. Nudge the board until the offset reads under
+   about 0.05 mm (it turns green), then tighten the screws. Tightening can move it, so check
+   again.
+6. Turn the adapter 180° in the jig and check once more. A hole printed slightly off-centre
+   flips with the turn, but the lens offset doesn't, so the average of the two readings is
+   the true offset. Seat the adapter the same way each time: play in the socket doesn't
+   average out.
+
+With the floating carrier, turn its centring screws instead. Give them nylon tips, or cap
+them with hot glue.
+
+**Focuser checks**
+
+* **Drawtube wobble.** With the scope collimated, rack the focuser in and out, and tighten
+  and loosen its lock, while watching the centre spot against the shared centre. If the spot
+  jumps, the drawtube moves sideways in the focuser. That counts in full, like barrel play.
+* **Focuser tilt.** The secondary's tilt makes up for a slightly tilted focuser: it aims
+  the focuser axis at the primary's centre whatever the focuser's angle. So the tilt rarely
+  needs fixing. A strongly tilted focuser shows up as a secondary that can't be centred in the
+  drawtube.
+
+  To check it, remove the secondary or turn it out of view. Tape a cross on the inside of the
+  tube wall, directly opposite the focuser's centre: the same distance from the tube's front
+  end, and half the circumference round. Turn on the crosshair layer; the cross should sit
+  on the shared centre. To get the tilt angle, take the cross's offset as a share of the
+  yellow ring's radius, and multiply by about 12°. That is the ring's angular radius with
+  the default `lens_to_rim` and `rim_d`.
 
 ## Sources
 

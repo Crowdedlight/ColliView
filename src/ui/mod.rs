@@ -1,8 +1,8 @@
 //! Panels around the live view.
 
-mod calibration_panel;
 mod camera_panel;
 mod image_panel;
+mod jig_panel;
 mod layers_panel;
 
 use egui::{Context, RichText, Ui};
@@ -86,13 +86,13 @@ pub fn tools_panel(app: &mut ColliViewApp, ui: &mut Ui) {
     egui::CollapsingHeader::new(RichText::new("Image & view").strong())
         .default_open(false)
         .show(ui, |ui| image_panel::image_panel(app, ui));
-    egui::CollapsingHeader::new(RichText::new("Off-centre camera calibration").strong())
+    egui::CollapsingHeader::new(RichText::new("Camera centring (jig)").strong())
         .default_open(false)
-        .show(ui, |ui| calibration_panel::calibration_panel(app, ui));
+        .show(ui, |ui| jig_panel::jig_panel(app, ui));
     if app.is_test_pattern() {
         egui::CollapsingHeader::new(RichText::new("Simulator").strong())
             .default_open(true)
-            .show(ui, |ui| calibration_panel::simulator_panel(app, ui));
+            .show(ui, |ui| jig_panel::simulator_panel(app, ui));
     }
     egui::CollapsingHeader::new(RichText::new("Profiles").strong())
         .default_open(false)
@@ -148,10 +148,7 @@ pub fn help_window(app: &mut ColliViewApp, ctx: &Context) {
              3. Secondary: tilt/rotate the secondary until its outline sits concentric in the green circle.\n\
              4. Primary: adjust the primary until its reflection, the clips and the centre spot line up with \
              the red, magenta and cyan circles.\n\
-             5. If your camera isn't perfectly centred, tape the centring target (calibration/ in the \
-             repository) or squared paper with pen marks inside the tube, run 'Off-centre camera calibration \
-             → Paper target' and use Live to centre it with the adapter's carrier screws. Then remove the \
-             paper and Auto-detect again.",
+             5. To check that the lens sits on the axis, use the printed centring jig: see 'Camera centring (jig)'. A few pixels of sensor offset or camera tilt don't matter: the circles follow the drawtube.",
         );
         ui.heading("Mouse");
         ui.label(

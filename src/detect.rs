@@ -2,7 +2,8 @@
 //!
 //! 1. Cast rays from the current centre and, on each ray, take the strongest radial
 //!    brightness edge inside the allowed radius band (sub-pixel via parabola fit).
-//! 2. Keep only edges of the dominant polarity (dark→bright or bright→dark).
+//! 2. Keep only edges of one polarity (dark→bright or bright→dark): the stronger one,
+//!    or the one asked for.
 //! 3. RANSAC a circle through the edge points, then refine with a Kåsa algebraic fit
 //!    followed by a Gauss–Newton geometric fit on the inliers.
 //! 4. Re-centre the rays on the result and repeat with a narrower band.
@@ -93,6 +94,20 @@ pub struct DetectParams {
     pub rays: usize,
     /// Pre-blur σ in pixels; suppresses sensor noise and fine texture.
     pub blur_sigma: f32,
+    /// Which way the edge's brightness must change, going outward.
+    pub polarity: Polarity,
+}
+
+/// The brightness step of a circle's edge, going outward from its centre.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Polarity {
+    /// Whichever is stronger along the rays.
+    #[default]
+    Any,
+    /// Dark inside, bright outside (e.g. the centring jig's aperture).
+    DarkInside,
+    /// Bright inside, dark outside (e.g. the jig's backlit hole).
+    BrightInside,
 }
 
 impl DetectParams {
@@ -104,7 +119,12 @@ impl DetectParams {
             radius_max: radius * (1.0 + tolerance),
             rays: 360,
             blur_sigma: 1.2,
+            polarity: Polarity::Any,
         }
+    }
+
+    pub fn with_polarity(self, polarity: Polarity) -> Self {
+        Self { polarity, ..self }
     }
 }
 
@@ -135,7 +155,7 @@ pub fn detect_circle(img: &GrayImage, params: &DetectParams) -> Option<Detection
     let (mut rmin, mut rmax) = (params.radius_min, params.radius_max);
     let mut best: Option<Detection> = None;
     for pass in 0..3 {
-        let edges = radial_edges(&img, center, rmin, rmax, params.rays);
+        let edges = radial_edges(&img, center, rmin, rmax, params.rays, params.polarity);
         if edges.len() < 8 {
             break;
         }
@@ -156,7 +176,7 @@ pub fn detect_circle(img: &GrayImage, params: &DetectParams) -> Option<Detection
 }
 
 /// One edge point per ray: the strongest radial gradient of the dominant polarity.
-fn radial_edges(img: &GrayImage, center: Pos2, rmin: f32, rmax: f32, rays: usize) -> Vec<Pos2> {
+fn radial_edges(img: &GrayImage, center: Pos2, rmin: f32, rmax: f32, rays: usize, polarity: Polarity) -> Vec<Pos2> {
     const STEP: f32 = 0.5;
     let n = (((rmax - rmin) / STEP).ceil() as usize).max(3) + 1;
     // Strongest positive and negative edge per ray: (radius, strength).
@@ -195,7 +215,12 @@ fn radial_edges(img: &GrayImage, center: Pos2, rmin: f32, rmax: f32, rays: usize
         neg_peaks.push(peak(&grad, -1.0).map(|(i, s)| (rmin + i * STEP, s)));
     }
     let strength = |v: &[Option<(f32, f32)>]| v.iter().flatten().map(|p| p.1).sum::<f32>();
-    let chosen = if strength(&pos_peaks) >= strength(&neg_peaks) { pos_peaks } else { neg_peaks };
+    let chosen = match polarity {
+        Polarity::DarkInside => pos_peaks,
+        Polarity::BrightInside => neg_peaks,
+        Polarity::Any if strength(&pos_peaks) >= strength(&neg_peaks) => pos_peaks,
+        Polarity::Any => neg_peaks,
+    };
     // Reject very weak edges (flat regions) relative to the median strength.
     let mut strengths: Vec<f32> = chosen.iter().flatten().map(|p| p.1).collect();
     if strengths.is_empty() {
