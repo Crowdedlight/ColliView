@@ -9,7 +9,11 @@ mod detect;
 mod overlay;
 mod processing;
 mod profile;
+mod register;
 mod snapshot;
+// The page layout is only used by examples/make_target.rs and the tests.
+#[allow(dead_code)]
+mod target;
 mod ui;
 mod view;
 

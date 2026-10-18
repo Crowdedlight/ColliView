@@ -16,7 +16,7 @@ pub fn compose(frame: &ColorImage, overlay: Option<&Overlay>, orientation: Orien
     if let Some(o) = overlay {
         let k = (h as f32 / 720.0).max(1.0);
         for layer in o.layers.iter().rev().filter(|l| l.visible) {
-            let c = o.layer_center(layer);
+            let c = o.center;
             let half = 0.5 * layer.thickness * k;
             match layer.kind {
                 LayerKind::Circle { radius } => {

@@ -29,29 +29,38 @@ impl GrayImage {
         if sigma <= 0.0 {
             return self.clone();
         }
-        let radius = (sigma * 2.5).ceil() as isize;
-        let kernel: Vec<f32> = (-radius..=radius).map(|i| (-(i * i) as f32 / (2.0 * sigma * sigma)).exp()).collect();
+        let radius = (sigma * 2.5).ceil() as usize;
+        let r = radius as isize;
+        let kernel: Vec<f32> = (-r..=r).map(|i| (-(i * i) as f32 / (2.0 * sigma * sigma)).exp()).collect();
         let norm: f32 = kernel.iter().sum();
         let kernel: Vec<f32> = kernel.iter().map(|k| k / norm).collect();
-        let (w, h) = (self.width as isize, self.height as isize);
+        let (w, h) = (self.width, self.height);
+        let clamped = |i: usize, t: usize, n: usize| (i as isize + t as isize - r).clamp(0, n as isize - 1) as usize;
         let mut tmp = vec![0.0; self.data.len()];
-        for y in 0..h {
-            for x in 0..w {
+        for (row, dst) in self.data.chunks_exact(w).zip(tmp.chunks_exact_mut(w)) {
+            for (x, d) in dst.iter_mut().enumerate() {
                 let mut acc = 0.0;
-                for (k, i) in kernel.iter().zip(-radius..=radius) {
-                    acc += k * self.data[(y * w + (x + i).clamp(0, w - 1)) as usize];
+                if x >= radius && x + radius < w {
+                    for (k, v) in kernel.iter().zip(&row[x - radius..=x + radius]) {
+                        acc += k * v;
+                    }
+                } else {
+                    for (t, k) in kernel.iter().enumerate() {
+                        acc += k * row[clamped(x, t, w)];
+                    }
                 }
-                tmp[(y * w + x) as usize] = acc;
+                *d = acc;
             }
         }
+        // Whole rows at a time, so the column pass stays cache-friendly. The taps are
+        // summed in the same order as the row pass.
         let mut out = vec![0.0; self.data.len()];
-        for y in 0..h {
-            for x in 0..w {
-                let mut acc = 0.0;
-                for (k, i) in kernel.iter().zip(-radius..=radius) {
-                    acc += k * tmp[((y + i).clamp(0, h - 1) * w + x) as usize];
+        for (y, dst) in out.chunks_exact_mut(w).enumerate() {
+            for (t, k) in kernel.iter().enumerate() {
+                let yi = clamped(y, t, h);
+                for (d, s) in dst.iter_mut().zip(&tmp[yi * w..(yi + 1) * w]) {
+                    *d += k * s;
                 }
-                out[(y * w + x) as usize] = acc;
             }
         }
         Self { width: self.width, height: self.height, data: out }

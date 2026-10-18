@@ -1,4 +1,4 @@
-//! Per-telescope profiles: layers, calibration offsets and image settings as JSON.
+//! Per-telescope profiles: layers and image settings as JSON.
 
 use std::path::Path;
 
@@ -48,7 +48,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("p.json");
         let mut overlay = Overlay::newtonian_preset(1280, 960);
-        overlay.layers[1].offset = egui::vec2(1.5, -2.25);
+        overlay.center = egui::pos2(641.5, 477.75);
         let p = Profile::new(
             overlay,
             Processing { gamma: 1.4, ..Default::default() },

@@ -97,9 +97,6 @@ fn layer_list(app: &mut ColliViewApp, ui: &mut Ui) {
             if matches!(layer.kind, LayerKind::Crosshair { .. }) {
                 label.push_str("  ✚");
             }
-            if layer.offset != egui::Vec2::ZERO {
-                label.push_str("  ↗");
-            }
             let selected = o.selected == Some(layer.id);
             if ui.selectable_label(selected, label).clicked() {
                 select = Some(layer.id);
@@ -109,7 +106,7 @@ fn layer_list(app: &mut ColliViewApp, ui: &mut Ui) {
     if let Some(id) = select {
         o.selected = Some(id);
     }
-    ui.small("★ reference (defines the centre) · ↗ has a calibration offset");
+    ui.small("★ reference: defines the centre that every layer shares");
     ui.horizontal_wrapped(|ui| {
         if ui.button("+ Circle").clicked() {
             o.add_circle();
@@ -177,18 +174,7 @@ fn selected_layer(app: &mut ColliViewApp, ui: &mut Ui) {
         if id == reference {
             ui.small("This ring defines the shared centre. Auto-detect fits it.");
         } else {
-            ui.horizontal(|ui| {
-                ui.label("Offset");
-                ui.add(DragValue::new(&mut layer.offset.x).speed(0.05).fixed_decimals(2).prefix("x "));
-                ui.add(DragValue::new(&mut layer.offset.y).speed(0.05).fixed_decimals(2).prefix("y "));
-                if ui.small_button("Zero").clicked() {
-                    layer.offset = egui::Vec2::ZERO;
-                }
-            })
-            .response
-            .on_hover_text(
-                "Offset from the shared centre (raw px). Set by the calibration wizard; Alt+drag on the image",
-            );
+            ui.small("Centred on the reference: move the shared centre to move it.");
             if layer.is_circle() {
                 ui.horizontal(|ui| {
                     measure = ui

@@ -1,5 +1,8 @@
 //! Overlay layers: concentric circles (and crosshairs) sharing one centre.
 //!
+//! Every layer is drawn at the shared centre, which the reference ring defines: the
+//! point is to line the features up on one centre, so no layer has its own offset.
+//!
 //! Geometry is stored in raw sensor pixels; see `view.rs` for why.
 
 pub mod draw;
@@ -36,9 +39,6 @@ pub struct Layer {
     pub color: Color32,
     /// Line width in screen pixels, so lines stay crisp at any zoom.
     pub thickness: f32,
-    /// Offset from the shared centre in raw pixels. Zero means concentric.
-    /// Normally set by the rotation-calibration wizard to cancel camera bias.
-    pub offset: Vec2,
     pub kind: LayerKind,
     /// Last "Measure" result for this layer's feature (not persisted).
     #[serde(skip)]
@@ -83,7 +83,7 @@ pub struct Overlay {
     /// Top of the list is drawn last (on top), like image-editor layers.
     pub layers: Vec<Layer>,
     pub selected: Option<LayerId>,
-    /// The ring that defines the shared centre. Always linked (offset 0).
+    /// The ring that defines the shared centre.
     pub reference: LayerId,
     pub show_center_marker: bool,
     next_id: u32,
@@ -129,7 +129,6 @@ impl Overlay {
             visible: true,
             color,
             thickness: 2.0,
-            offset: Vec2::ZERO,
             kind,
             measured: None,
         });
@@ -193,22 +192,12 @@ impl Overlay {
         }
     }
 
-    /// Make another circle the reference. Its offset is folded into the shared centre
-    /// so nothing moves on screen.
+    /// Make another circle the reference: the one Auto-detect fits. All circles share
+    /// the centre, so nothing moves on screen.
     pub fn set_reference(&mut self, id: LayerId) {
-        let Some(layer) = self.layer(id) else { return };
-        if !layer.is_circle() || id == self.reference {
-            return;
+        if self.layer(id).is_some_and(Layer::is_circle) {
+            self.reference = id;
         }
-        let shift = layer.offset;
-        self.center += shift;
-        for l in &mut self.layers {
-            if l.id != id {
-                l.offset -= shift;
-            }
-        }
-        self.layer_mut(id).unwrap().offset = Vec2::ZERO;
-        self.reference = id;
     }
 
     pub fn index_of(&self, id: LayerId) -> Option<usize> {
@@ -233,11 +222,6 @@ impl Overlay {
 
     pub fn reference_radius(&self) -> Option<f32> {
         self.reference_layer().and_then(Layer::radius)
-    }
-
-    /// Where a layer is drawn: the shared centre plus its own offset.
-    pub fn layer_center(&self, layer: &Layer) -> Pos2 {
-        if layer.id == self.reference { self.center } else { self.center + layer.offset }
     }
 
     /// Set the shared centre and the reference ring radius (e.g. from auto-detect).
@@ -266,7 +250,6 @@ impl Overlay {
         let k = width as f32 / ow as f32;
         self.center = (self.center.to_vec2() * k).to_pos2();
         for l in &mut self.layers {
-            l.offset *= k;
             if let LayerKind::Circle { radius } = &mut l.kind {
                 *radius *= k;
             }
@@ -275,24 +258,21 @@ impl Overlay {
         Rescale::Scaled(k)
     }
 
-    /// Offset of a layer's measured feature from where its circle is drawn, in raw px.
+    /// Offset of a layer's measured feature from the shared centre, in raw px.
     pub fn measured_error(&self, layer: &Layer) -> Option<Vec2> {
-        layer.measured.map(|m| m.center - self.layer_center(layer))
+        layer.measured.map(|m| m.center - self.center)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use egui::vec2;
 
     #[test]
-    fn preset_has_reference_and_concentric_layers() {
+    fn preset_has_reference_at_the_image_centre() {
         let o = Overlay::newtonian_preset(1280, 960);
         assert_eq!(o.reference_layer().unwrap().name, "Focuser drawtube");
-        for l in &o.layers {
-            assert_eq!(o.layer_center(l), pos2(640.0, 480.0));
-        }
+        assert_eq!(o.center, pos2(640.0, 480.0));
     }
 
     #[test]
@@ -307,12 +287,11 @@ mod tests {
     fn same_aspect_rescales_uniformly() {
         let mut o = Overlay::newtonian_preset(640, 480);
         let sec = o.layers[1].id;
-        o.layer_mut(sec).unwrap().offset = vec2(4.0, -2.0);
-        let r = o.reference_radius().unwrap();
+        let (r, rs) = (o.reference_radius().unwrap(), o.layer(sec).unwrap().radius().unwrap());
         assert_eq!(o.adapt_to_resolution(1280, 960), Rescale::Scaled(2.0));
         assert_eq!(o.center, pos2(640.0, 480.0));
         assert_eq!(o.reference_radius().unwrap(), 2.0 * r);
-        assert_eq!(o.layer(sec).unwrap().offset, vec2(8.0, -4.0));
+        assert_eq!(o.layer(sec).unwrap().radius().unwrap(), 2.0 * rs);
     }
 
     #[test]
@@ -326,14 +305,14 @@ mod tests {
     }
 
     #[test]
-    fn changing_reference_keeps_screen_positions() {
+    fn changing_reference_keeps_the_centre() {
         let mut o = Overlay::newtonian_preset(640, 480);
-        let sec = o.layers[1].id;
-        o.layer_mut(sec).unwrap().offset = vec2(3.0, 5.0);
-        let before: Vec<Pos2> = o.layers.iter().map(|l| o.layer_center(l)).collect();
+        let (sec, cross) = (o.layers[1].id, o.add_crosshair());
+        let c = o.center;
         o.set_reference(sec);
-        let after: Vec<Pos2> = o.layers.iter().map(|l| o.layer_center(l)).collect();
-        assert_eq!(before, after);
+        assert_eq!((o.reference, o.center), (sec, c));
+        // Only a circle can be the reference.
+        o.set_reference(cross);
         assert_eq!(o.reference, sec);
     }
 
@@ -342,6 +321,19 @@ mod tests {
         let o = Overlay::newtonian_preset(1280, 960);
         let json = serde_json::to_string(&o).unwrap();
         let back: Overlay = serde_json::from_str(&json).unwrap();
+        assert_eq!(o, back);
+    }
+
+    /// Sessions and profiles saved when layers had their own offsets still load; the
+    /// offsets are dropped, so every layer is back on the shared centre.
+    #[test]
+    fn old_layer_offsets_are_ignored() {
+        let o = Overlay::newtonian_preset(1280, 960);
+        let mut v = serde_json::to_value(&o).unwrap();
+        for l in v["layers"].as_array_mut().unwrap() {
+            l["offset"] = serde_json::json!({ "x": 3.5, "y": -2.0 });
+        }
+        let back: Overlay = serde_json::from_value(v).unwrap();
         assert_eq!(o, back);
     }
 }

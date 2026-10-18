@@ -136,6 +136,47 @@ fn fit_scale(rect: Rect, image_size: Vec2) -> f32 {
     (rect.width() / image_size.x).min(rect.height() / image_size.y).max(1e-6)
 }
 
+/// How close to the view's edge the pointer may get before it is moved back (points).
+const EDGE_MARGIN: f32 = 20.0;
+
+/// A drag that goes on past the screen edge. The pointer is moved back to the middle of
+/// the view whenever it nears an edge; `virt` is where it would be without those jumps.
+/// Where the pointer can't be moved (Wayland) the jump never lands, no other is asked
+/// for, and the drag stops at the edge as before.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EndlessDrag {
+    /// Where the pointer would be, in screen points. It can lie outside the screen.
+    pub virt: Pos2,
+    last: Pos2,
+    /// A requested jump that hasn't shown up in the pointer position yet.
+    warp: Option<Pos2>,
+}
+
+impl EndlessDrag {
+    pub fn new(p: Pos2) -> Self {
+        Self { virt: p, last: p, warp: None }
+    }
+
+    /// Feed the pointer position each frame. Returns where to move the pointer, if anywhere.
+    pub fn update(&mut self, p: Pos2, view: Rect) -> Option<Pos2> {
+        // Events from before a jump still arrive near the old spot; the first one near
+        // the target means it has happened.
+        if let Some(w) = self.warp
+            && (p - w).length() < (p - self.last).length()
+        {
+            self.last = w;
+            self.warp = None;
+        }
+        self.virt += p - self.last;
+        self.last = p;
+        if self.warp.is_none() && !view.shrink(EDGE_MARGIN).contains(p) {
+            self.warp = Some(view.center());
+            return self.warp;
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,6 +271,44 @@ mod tests {
             if pan.x > 0.0 && pan.y > 0.0 && pan.x < img.x && pan.y < img.y {
                 assert!(approx(before, after), "{s:?}: {before:?} vs {after:?}");
             }
+        }
+    }
+
+    const VIEW: Rect = Rect { min: pos2(0.0, 0.0), max: pos2(800.0, 600.0) };
+
+    #[test]
+    fn endless_drag_follows_the_pointer_inside_the_view() {
+        let mut d = EndlessDrag::new(pos2(400.0, 300.0));
+        for p in [pos2(410.0, 300.0), pos2(500.0, 250.0), pos2(300.0, 320.0)] {
+            assert_eq!(d.update(p, VIEW), None);
+            assert!(approx(d.virt, p));
+        }
+    }
+
+    #[test]
+    fn endless_drag_keeps_going_past_the_edge() {
+        let mut d = EndlessDrag::new(pos2(700.0, 300.0));
+        // Near the right edge: jump back to the middle.
+        assert_eq!(d.update(pos2(790.0, 300.0), VIEW), Some(pos2(400.0, 300.0)));
+        // A stale event from before the jump, then the pointer at the target and moving on.
+        assert_eq!(d.update(pos2(795.0, 300.0), VIEW), None);
+        assert_eq!(d.update(pos2(400.0, 300.0), VIEW), None);
+        assert_eq!(d.update(pos2(450.0, 300.0), VIEW), None);
+        // 95 px before the jump, 50 after: no movement lost or counted twice.
+        assert!(approx(d.virt, pos2(845.0, 300.0)), "{:?}", d.virt);
+        // The next edge brings the next jump.
+        assert_eq!(d.update(pos2(785.0, 300.0), VIEW), Some(pos2(400.0, 300.0)));
+        assert!(approx(d.virt, pos2(1180.0, 300.0)), "{:?}", d.virt);
+    }
+
+    #[test]
+    fn endless_drag_without_jumps_stops_at_the_edge() {
+        let mut d = EndlessDrag::new(pos2(700.0, 300.0));
+        assert!(d.update(pos2(790.0, 300.0), VIEW).is_some());
+        // The jump never lands (Wayland): no more requests, and the pointer is still followed.
+        for p in [pos2(799.0, 300.0), pos2(799.0, 320.0), pos2(700.0, 320.0)] {
+            assert_eq!(d.update(p, VIEW), None);
+            assert!(approx(d.virt, p));
         }
     }
 }

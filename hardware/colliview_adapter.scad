@@ -46,7 +46,13 @@ lens_to_rim = 115;
 rim_d = 48;
 
 /* [Centring] */
-// Radial travel of the camera carrier
+// fixed: the carrier fills the head's bore, so the lens sits on the axis by itself (this
+// assumes the sensor is centred under the lens). floating: it slides in the head and is
+// centred with three screws.
+carrier_fit = "fixed"; // [fixed, floating]
+// Total gap (head bore - carrier diameter) of the fixed carrier
+fixed_gap = 0.1;
+// Radial travel of the floating carrier. It also sets the head's bore, for both fits.
 float = 1.5;
 // Heat-set insert for the three centring screws
 centring_insert = "M3x5.7"; // [M2x3, M2.5x4, M3x3, M3x5.7, M3x5x4, M4x4, M4x8.1]
@@ -153,6 +159,8 @@ pcb_boss_xy = has_holes ? [for (sx = [-1, 1], sy = [-1, 1])
 carrier_h = carrier_floor_t + boss_h + pcb[2] + 1.0;
 carrier_od = max(barrel_od + 2, norm([pcb[0], pcb[1]]) + 4);
 head_id = carrier_od + 2 * float;
+// The fixed carrier fills the same bore, so a head printed for the floating one fits it.
+carrier_d = carrier_fit == "fixed" ? head_id - fixed_gap : carrier_od;
 head_od = max(head_id + 2 * head_wall, barrel_od + 2 * flange_extra);
 head_h = carrier_h + 14;                       // connector, cable, resistor and trimmer
 head_top = head_floor_top + head_h;
@@ -197,6 +205,8 @@ wire_in_r = bore_d / 2 - wire_hole_d / 2 - 0.5;    // inside the bore, clear of 
 wire_out_r = head_id / 2 - wire_hole_d / 2 - 0.7;  // under the carrier's wire notch, clear of the spigot
 wire_notch_w = wire_hole_d + 1.4;
 
+assert(carrier_fit == "fixed" || carrier_fit == "floating", str("unknown carrier_fit '", carrier_fit, "'"));
+assert(fixed_gap >= 0 && fixed_gap < 2 * float, "fixed_gap must be between 0 and the floating travel");
 assert(strip_len <= strip_room,
     str("LED strip (", strip_len, " mm) does not fit the chamber (", strip_room, " mm available): use fewer units"));
 assert(acrylic_od - acrylic_id >= 8, "Diffuser ring is too narrow: the baffle is too wide for this barrel");
@@ -223,8 +233,13 @@ echo(str("  Diffuser ring (laser path): OD ", acrylic_od + kerf, "  ID ", acryli
          "  -> finished OD ", acrylic_od, "  ID ", acrylic_id, "  thickness ", acrylic_t));
 echo(str("  LED strip: ", strip_len, " mm of ", strip_room, " mm available"));
 echo(str("  Baffle ID ", baffle_id, "  head OD ", head_od, "  overall height ", head_top + cap_t));
-echo(str("  Centring screws: ", centring_insert, " inserts, M", ins_thread(centring_ins), " x ", centring_screw_len,
-         " screws (at least ", round(centring_screw_min * 10) / 10, " mm)"));
+echo(str("  Carrier: ", carrier_fit, ", OD ", carrier_d, " in a ", head_id, " mm head bore (gap ",
+         round((head_id - carrier_d) * 100) / 100, " mm)"));
+if (carrier_fit == "floating")
+    echo(str("  Centring screws: ", centring_insert, " inserts, M", ins_thread(centring_ins), " x ", centring_screw_len,
+             " screws (at least ", round(centring_screw_min * 10) / 10, " mm)"));
+else
+    echo("  Centring screws: not needed with the fixed carrier");
 if (has_holes)
     echo(str("  PCB screws: ", pcb_insert, " inserts, M", ins_thread(pcb_ins), " x ", pcb_screw_len,
              " screws (at most ", round(pcb_screw_max * 10) / 10, " mm)"));
@@ -309,12 +324,13 @@ module head() {
     }
 }
 
+// The camera carrier. It prints floor-down, so its bottom edge is the first layer.
 module carrier() {
     pocket = [pcb[0] + pcb_gap, pcb[1] + pcb_gap];
     translate([0, 0, head_floor_top]) difference() {
         union() {
             difference() {
-                cylinder(d = carrier_od, h = carrier_h);
+                cylinder(d = carrier_d, h = carrier_h);
                 // PCB pocket, placed so the lens sits on the optical axis.
                 translate([-lens_off[0] - pocket[0] / 2, -lens_off[1] - pocket[1] / 2, carrier_floor_t])
                     cube([pocket[0], pocket[1], carrier_h]);
@@ -337,7 +353,9 @@ module carrier() {
         // Lens holder through the floor (the lens is on the axis).
         translate([-(holder[0] + 1) / 2, -(holder[1] + 1) / 2, -1]) cube([holder[0] + 1, holder[1] + 1, carrier_h + 2]);
         // Notch for the LED wires over the wire channel, lined up with the mark on the head.
-        translate([wire_out_r - wire_notch_w / 2, -wire_notch_w / 2, -1]) cube([carrier_od / 2, wire_notch_w, carrier_h + 2]);
+        translate([wire_out_r - wire_notch_w / 2, -wire_notch_w / 2, -1]) cube([carrier_d / 2, wire_notch_w, carrier_h + 2]);
+        // Elephant's foot would make the fixed carrier bind in the head.
+        mirror([0, 0, 1]) bed_edge_chamfer(carrier_d, 0);
     }
 }
 

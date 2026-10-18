@@ -8,8 +8,8 @@ acrylic diffuser is exported from the same model, so all parts always match.
 ```
             cable + zip tie
         ┌──────── cap ────────┐
-        │  trimmer, resistor  │   head: floating camera carrier,
-        │ ┌─── carrier ─────┐ │◄─ 3 radial M3 centring screws
+        │  trimmer, resistor  │   head: camera carrier pressed into the bore
+        │ ┌─── carrier ─────┐ │◄─ (or floating, on 3 radial M3 centring screws)
         │ │ ▄▄▄ camera PCB  │ │
   ══════╧═╧══╤═ lens ═╤═════╧═╧══════  flange: seats on the focuser (sets tilt)
         │    │ baffle │    ▓│
@@ -105,7 +105,8 @@ This writes `out/`:
 |---|---|
 | `barrel_2mm.stl`, `barrel_3mm.stl` | Barrel with flange and head floor. The acrylic recess depth matches the sheet thickness, so print the one for your acrylic. |
 | `head.stl` | The tube around the camera carrier, with the three centring-screw bosses. |
-| `carrier.stl`, `baffle.stl`, `retainer.stl`, `cap.stl` | The other printed parts, already in print orientation. |
+| `carrier.stl` | The camera carrier, fixed by default (see *Fixed or floating carrier* below). |
+| `baffle.stl`, `retainer.stl`, `cap.stl` | The other printed parts, already in print orientation. |
 | `cap_test.stl` | Three caps with crush ribs at `cap_squeeze` ± 0.15 mm (0.25, 0.4, 0.55 by default), each engraved with its value inside. Try each in the head and keep the one that holds firmly but still comes off; set `cap_squeeze` to its value for later builds. Print it instead of `cap.stl`. |
 | `tolerance_test.stl` | Seven barrel rings from −0.3 to +0.3 mm with the diameter engraved. **Print this first.** |
 | `fit_test.stl` | A peg and five rings engraved with their total gaps, `fit_gap` ± 0.2 mm (0–0.35 mm by default). **Print this first** too. |
@@ -137,10 +138,21 @@ These are not slide fits and have their own settings:
 * the retainer is a press fit (`press_fit`)
 * the cap is held by eight crush ribs on its lip (`cap_squeeze`); the lip itself has the
   slide fit, so it centres the cap
-* the carrier floats in the head by `float`
+* the fixed carrier is 0.1 mm (`fixed_gap`, on the diameter) smaller than the head's bore;
+  the floating one floats in it by `float`
 * the barrel is tuned to the focuser with `barrel_od`
 * the insert holes follow the insert maker's table
 * the laser-cut acrylic has `acrylic_clear` per side
+
+**Fixed or floating carrier.** By default (`carrier_fit = "fixed"`) the carrier fills the
+head's bore, `fixed_gap` (0.1 mm) smaller than it, so the lens sits on the axis by itself.
+Its bottom edge is bevelled against elephant's foot, which would otherwise make it bind.
+This assumes the board has its lens centred over the sensor. ColliView's paper target (§5)
+shows how far off it is, and **Layer circle** checks it against the secondary. The head is
+the same for both fits, so a head printed for the floating carrier takes the fixed one;
+leave its centring screws out. With `carrier_fit = "floating"` the carrier is 3 mm smaller
+and is centred with the three screws, but their tips can dent the print, which makes fine
+adjustment hard.
 
 **Heat-set inserts.** The screw holes are sized for [CNC Kitchen inserts][cnck]. From
 their table, each hole is D2 wide and at least L + 1 mm deep, with at least W plus
@@ -182,9 +194,10 @@ them around, and run `python make_figures.py` (needs Pillow and NumPy) to redraw
 figures after changing the model.
 
 1. Glue the **head** onto the barrel's flange (CA or epoxy). The spigot locates it;
-   line up the two marks (they show the wire-channel side). Melt M3×5.7 heat-set inserts
-   into the three bosses from outside, flush with the boss faces. Fit M3×12 screws with
-   nylon tips, or cap them with a drop of hot glue, so they don't dig into the carrier.
+   line up the two marks (they show the wire-channel side). The fixed carrier needs
+   nothing else here. For the floating carrier, melt M3×5.7 heat-set inserts into the three
+   bosses from outside, flush with the boss faces, and fit M3×12 screws with nylon tips, or
+   cap them with a drop of hot glue, so they don't dig into the carrier.
 2. **Light chamber:** line the barrel's inside wall with white tape or paint it white,
    to mix the light. Stick the COB strip around the top of the chamber, leaving the gap
    at the sloped wire channel. Feed the two wires up through the channel into the head.
@@ -198,8 +211,8 @@ figures after changing the model.
    pushed out. Use a drop of glue if the press fit is loose.
 5. **Camera:** if the board has mounting holes, melt M2×3 heat-set inserts into the
    carrier's bosses, flush with their tops. Fit the PCB into the carrier with the lens
-   down through the floor, and fix it with M2×5 screws (or M2×4). Put the carrier in
-   the head with its notch at the marks. Solder the LED wires through the resistor and
+   down through the floor, and fix it with M2×5 screws (or M2×4). Press the carrier into
+   the head, notch at the marks, down onto the floor. Solder the LED wires through the resistor and
    trimmer to the board's 5V and GND pads. Keep the trimmer and the JST plug away from
    the head's wall, or lay the trimmer flat: the cap's lip reaches 5 mm down inside the
    wall.
@@ -218,17 +231,32 @@ figures after changing the model.
 1. Insert the adapter. The flange must sit flat on the focuser. A compression-ring
    focuser is best; thumbscrews push the barrel to one side.
 2. In ColliView, **Auto-detect** the drawtube rim.
+
+   **Fixed carrier:** there are no screws to turn, so skip steps 3 and 4. You can still
+   run step 4's two captures once, without Live: the camera bias shows how far the lens sits
+   off the axis. Then go on with step 5.
 3. **Rough:** turn on **Image & view → Mark the sensor centre**, then turn the three
    carrier screws until the status bar's *centre vs image centre* is within a few % of
    the frame. It doesn't need to be closer.
-4. **Fine:** in **Off-centre camera calibration**, pick the **secondary** layer, capture at
-   0°, turn the adapter 180° in the focuser and capture again. Leave the adapter there,
-   tick **Live**, and turn the carrier screws until *Camera bias now* reads about 0 (it
-   turns green). The lens now sits on the focuser axis.
-5. Untick **Live** (this clears the old captures) and calibrate each layer (secondary,
-   then primary) at 0° and 180°. Apply the small leftover bias as the layer's offset. If it warns that the rim
-   moved between the captures, the adapter isn't rotating about the focuser axis:
-   re-seat it and tighten the same way both times.
+4. **Fine:** tape a printout of [`calibration/centring_target.pdf`](../calibration/README.md)
+   flat inside the tube, in front of the focuser and as far down as you can. Squared paper
+   with a few bold pen marks works too. In **Off-centre camera calibration → Paper target**,
+   capture at 0°, turn the adapter 180° in the focuser and capture again. Leave the adapter
+   there, tick **Live**, and turn the carrier screws until *Camera bias now* reads about 0
+   (it turns green, and the cyan ✕ sits on the ○ at the sensor centre). The lens now sits
+   on the focuser axis, as far as the camera looks straight down the focuser (see below).
+
+   Without a paper target, use **Layer circle** with the **secondary** layer the same way.
+   It compares two depths (the rim and the secondary), so it doesn't need the camera to look
+   straight down the focuser. But it fits the rim and the secondary's outline instead of
+   matching the paper, which is less steady.
+5. Untick **Live** (this clears the old captures), remove the paper and **Auto-detect** the
+   drawtube again: the screws have moved it. To check the result, run **Layer circle** on the
+   secondary at 0° and 180°: it shows the camera bias that is left and the telescope's own
+   misalignment separately. All circles stay on the rim's centre, so the bias isn't stored
+   anywhere; it only tells you how well the camera is centred. If it warns that the rim moved
+   between the captures, the adapter isn't rotating about the focuser axis: re-seat it and
+   tighten the same way both times.
 
 **Why not just centre the rim on the sensor?** The carrier screws only move the camera
 sideways; how much it tilts is set by the print. A slightly tilted camera with the rim
@@ -237,6 +265,22 @@ by a different amount than the rim (parallax). With the lens on the axis, like t
 peephole of a Cheshire, the tilt only shifts the whole picture evenly, and the circles
 follow the detected rim anyway. The camera bias that the 0°/180° calibration measures is
 exactly this off-axis error, so it is the right thing to null.
+
+**How the paper target measures it.** Turning the adapter 180° turns the paper's image
+about one point: where the focuser axis meets the paper. ColliView matches the whole
+pattern between the two captures to find that point (the cyan ✕), so it measures the axis
+the adapter really turns about, with no circle to fit. The paper is fixed to the telescope,
+so where it sits doesn't matter. Only the paper is measured, so the drawtube rim needn't be
+fitted, and the yellow ring just masks it out.
+
+**What it assumes.** The bias is that point minus the sensor centre. That puts the lens on
+the axis if the camera looks straight down the focuser: the board square to the axis, which
+the flange and the carrier seat are printed for, and the lens centred over the sensor. This
+is the same assumption as the rough step's *centre vs image centre*, measured from the
+rotation instead of the rim's edge. A tilt, or a lens that sits off the sensor centre (on
+cheap modules it can be tens of pixels), moves that target, which leaves the lens a
+millimetre or so off the axis at the paper's distance. **Layer circle** (step 5) shows what
+is left.
 
 **The telescope's own tilt can't get into the calibration.** The rim is the far end of
 the drawtube, which the adapter sits in, so it tilts with the focuser. And between the

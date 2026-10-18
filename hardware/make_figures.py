@@ -120,7 +120,8 @@ class View:
 def render(part, view, extra):
     with tempfile.TemporaryDirectory() as tmp:
         png = Path(tmp) / f"{part}.png"
-        cmd = [find_openscad(), "-o", str(png), "-D", f'part="{part}"', *extra,
+        # The drawings and their labels show the floating carrier with its centring screws.
+        cmd = [find_openscad(), "-o", str(png), "-D", f'part="{part}"', "-D", 'carrier_fit="floating"', *extra,
                f"--imgsize={view.size[0]},{view.size[1]}", "--projection=o", "--colorscheme=Tomorrow",
                f"--camera={view.camera()}", str(SCAD)]
         r = subprocess.run(cmd, capture_output=True, text=True)

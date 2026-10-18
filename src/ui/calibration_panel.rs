@@ -1,14 +1,140 @@
 use egui::{Color32, DragValue, RichText, Ui};
 
-use crate::app::{ColliViewApp, JobKind};
-use crate::calibrate::CENTRED_TOLERANCE;
+use crate::app::{CalibMode, ColliViewApp, JobKind};
+use crate::calibrate::{CENTRED_TOLERANCE, match_quality};
+use crate::camera::test_pattern::PaperKind;
+
+const GOOD: Color32 = Color32::from_rgb(140, 220, 140);
+const SEARCHING: Color32 = Color32::from_rgb(255, 170, 60);
 
 pub fn calibration_panel(app: &mut ColliViewApp, ui: &mut Ui) {
+    ui.horizontal(|ui| {
+        let mut mode = app.calib.mode;
+        ui.selectable_value(&mut mode, CalibMode::Paper, "Paper target")
+            .on_hover_text("Centre the camera on the focuser axis with a sheet of squares in the tube");
+        ui.selectable_value(&mut mode, CalibMode::Layer, "Layer circle")
+            .on_hover_text("Separate a layer's camera bias from the telescope's real misalignment, e.g. the secondary");
+        if mode != app.calib.mode {
+            // The screws may have moved the camera during Live: those captures no longer apply.
+            if app.calib.live {
+                app.calib.reset();
+            }
+            if app.calib.paper.live {
+                app.calib.paper.reset();
+            }
+            app.calib.mode = mode;
+        }
+    });
+    ui.separator();
+    match app.calib.mode {
+        CalibMode::Paper => paper_panel(app, ui),
+        CalibMode::Layer => layer_panel(app, ui),
+    }
+}
+
+fn paper_panel(app: &mut ColliViewApp, ui: &mut Ui) {
+    ui.label(
+        "Centres the lens on the focuser axis with the carrier screws. Tape a sheet with squares flat \
+         inside the tube, in front of the focuser and as far down as you can, and light it. Plain squared \
+         paper needs a few bold, irregular pen marks; or print calibration/centring_target.pdf from the \
+         repository. Don't touch the paper between the captures.",
+    );
+    ui.label(
+        "Only the paper is measured, against the sensor centre (○ in the view). This assumes the camera \
+         looks straight down the focuser; Layer circle can show what is left. The \
+         yellow ring only masks out the drawtube: fitting it roughly is enough.",
+    );
+    let busy = app.job.as_ref().is_some_and(|j| matches!(j.kind, JobKind::PaperCapture { .. }));
+    ui.label(
+        "Capture at 0°, rotate the adapter 180° in the focuser, then capture again. With frame averaging \
+         on, wait a moment after turning.",
+    );
+    let steps = ["1. Capture at 0°", "2. Capture at 180°"];
+    for (i, label) in steps.iter().enumerate() {
+        ui.horizontal_wrapped(|ui| {
+            let enabled = !busy
+                && app.frame.is_some()
+                && app.s.overlay.reference_radius().is_some()
+                && (i == 0 || app.calib.paper.has_0deg_capture());
+            if ui.add_enabled(enabled, egui::Button::new(*label)).clicked() {
+                app.paper_capture(i);
+            }
+            if app.calib.paper.captured[i] {
+                ui.label("✔");
+            }
+        });
+    }
+    if busy {
+        ui.spinner();
+    }
+
+    let Some(r) = app.calib.paper.result else { return };
+    ui.separator();
+    ui.label(format!(
+        "Turned {:.1}°, paper match {:.2} ({})",
+        r.rotation_deg,
+        r.match_score,
+        match_quality(r.match_score)
+    ));
+    ui.label(format!("Camera bias:  {:+.2}, {:+.2} px  ({:.2} % of ring)", r.bias.x, r.bias.y, r.percent(r.bias)))
+        .on_hover_text(
+            "Where the focuser axis meets the paper (✕ in the view), relative to the sensor centre (○). \
+             It is 0 when the lens sits on the axis.",
+        );
+    if ui.button("Start over").clicked() {
+        app.calib.paper.reset();
+        return;
+    }
+
+    ui.separator();
+    let mut live = app.calib.paper.live;
+    ui.checkbox(&mut live, "Live: centre the camera with the carrier screws")
+        .on_hover_text("Measures the camera bias continuously. Leave the adapter as it is after the 180° capture.");
+    if live && !app.calib.paper.live {
+        app.calib.paper.start_live();
+    } else if !live && app.calib.paper.live {
+        // The screws may have moved the camera: the captures no longer apply.
+        app.calib.paper.reset();
+    }
+    let p = &app.calib.paper;
+    if !p.live {
+        return;
+    }
+    ui.label(
+        "Leave the adapter and the paper as they are and turn the carrier screws until this reads about 0 \
+         (the ✕ sits on the ○). Then untick Live, remove the paper and Auto-detect (D) the drawtube again: \
+         the screws have moved it.",
+    );
+    match (p.live_bias, p.live_reg) {
+        (Some(b), Some(reg)) => {
+            let text = RichText::new(format!(
+                "Camera bias now:  {:+.2}, {:+.2} px  ({:.2} % of ring)",
+                b.x,
+                b.y,
+                r.percent(b)
+            ))
+            .strong();
+            let centred = b.length() <= CENTRED_TOLERANCE * r.ring_radius;
+            ui.label(if centred { text.color(GOOD) } else { text });
+            ui.label(format!("Paper match {:.2} ({})", reg.score, match_quality(reg.score)));
+        }
+        _ => {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label("Measuring…");
+            });
+        }
+    }
+    if p.live_failures > 0 {
+        ui.colored_label(SEARCHING, format!("Searching… ({} misses): keep the paper in view", p.live_failures));
+    }
+}
+
+fn layer_panel(app: &mut ColliViewApp, ui: &mut Ui) {
     ui.label(
         "If the camera isn't exactly on the focuser axis, features further down the tube look \
          shifted. Measuring at 0° and 180° adapter rotation separates that camera bias from real \
-         misalignment. Remove most of it with the adapter's carrier screws (Live), then store the \
-         rest as layer offsets.",
+         misalignment. With a floating carrier, remove the bias with the carrier screws (Live).",
     );
     let o = &app.s.overlay;
     let candidates: Vec<_> =
@@ -30,10 +156,6 @@ pub fn calibration_panel(app: &mut ColliViewApp, ui: &mut Ui) {
             app.calib.reset();
         }
     });
-    ui.checkbox(&mut app.calib.manual, "Use current circle positions instead of auto-detect").on_hover_text(
-        "Manual: before each capture, fit the focuser ring (centre) and the layer's circle \
-         (Alt+drag its offset) onto the features yourself",
-    );
 
     let busy = app.job.as_ref().is_some_and(|j| matches!(j.kind, JobKind::Calibration { .. }));
     ui.label("Capture at 0°, rotate the adapter 180° in the focuser, then capture again.");
@@ -77,44 +199,17 @@ pub fn calibration_panel(app: &mut ColliViewApp, ui: &mut Ui) {
         r.misalignment.y,
         r.misalignment_percent()
     ));
-    // While Live runs the screws may have moved the camera, so this bias is out of date.
-    let live_on = app.calib.live;
-    ui.horizontal(|ui| {
-        if ui
-            .add_enabled(r.coaxial && !live_on, egui::Button::new(RichText::new("Apply bias as layer offset").strong()))
-            .on_hover_text("The circle moves to where a perfectly aligned feature appears through this camera")
-            .on_disabled_hover_text("Needs a calibration without the rim moving, and Live off")
-            .clicked()
-            && let Some(t) = app.calib.target
-            && let Some(l) = app.s.overlay.layer_mut(t)
-        {
-            l.offset = r.bias;
-            let name = l.name.clone();
-            app.info(format!("Offset applied to '{name}'"));
-        }
-        if ui.button("Start over").clicked() {
-            app.calib.reset();
-        }
-    });
-    if app.calib.result.is_none() {
+    if ui.button("Start over").clicked() {
+        app.calib.reset();
         return;
     }
 
     // Live bias, for centring the camera with the carrier screws.
     ui.separator();
-    // Live auto-detects; with hand-placed circles the two halves wouldn't match.
-    if app.calib.manual && app.calib.live {
-        app.calib.stop_live();
-    }
     let mut live = app.calib.live;
-    ui.add_enabled(
-        r.coaxial && !app.calib.manual,
-        egui::Checkbox::new(&mut live, "Live: centre the camera with the carrier screws"),
-    )
-    .on_hover_text("Measures the camera bias continuously. Leave the adapter as it is after the 180° capture.")
-    .on_disabled_hover_text(
-        "Needs auto-detect (untick 'Use current circle positions') and a calibration without the rim moving",
-    );
+    ui.add_enabled(r.coaxial, egui::Checkbox::new(&mut live, "Live: centre the camera with the carrier screws"))
+        .on_hover_text("Measures the camera bias continuously. Leave the adapter as it is after the 180° capture.")
+        .on_disabled_hover_text("Needs a calibration without the rim moving");
     if live && !app.calib.live {
         app.calib.live = true;
     } else if !live && app.calib.live {
@@ -126,8 +221,8 @@ pub fn calibration_panel(app: &mut ColliViewApp, ui: &mut Ui) {
     }
     ui.label(
         "Leave the adapter as it is and turn the carrier screws until this reads about 0: the lens is \
-         then on the focuser axis. Then untick Live and calibrate each layer again; the old captures \
-         and offsets no longer apply.",
+         then on the focuser axis. Then untick Live and Auto-detect (D) again; the old captures no \
+         longer apply.",
     );
     match app.calib.live_bias {
         Some(b) => {
@@ -177,6 +272,18 @@ pub fn simulator_panel(app: &mut ColliViewApp, ui: &mut Ui) {
         }
     });
     ui.add(egui::Slider::new(&mut s.noise, 0.0..=40.0).text("noise"));
+    ui.horizontal(|ui| {
+        ui.label("Paper");
+        egui::ComboBox::from_id_salt("sim_paper").selected_text(s.paper.label()).show_ui(ui, |ui| {
+            for k in PaperKind::ALL {
+                ui.selectable_value(&mut s.paper, k, k.label());
+            }
+        });
+    });
+    if s.paper != PaperKind::Off {
+        ui.add(egui::Slider::new(&mut s.paper_depth, 0.5..=2.0).text("paper depth"));
+        vec(ui, "Paper position (mm)", &mut s.paper_offset);
+    }
     if ui.button("Perfectly collimated").clicked() {
         s.secondary_error = [0.0; 2];
         s.primary_error = [0.0; 2];

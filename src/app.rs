@@ -8,15 +8,19 @@ use egui::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::calibrate::{CalibrationResult, RotationSample};
+use crate::calibrate::{
+    CalibrationResult, MIN_MATCH, PaperError, PaperResult, RotationSample, paper_live_axis, paper_live_bias,
+    solve_paper,
+};
 use crate::camera::test_pattern::Scene;
 use crate::camera::{CameraWorker, Command, ControlDesc, DeviceInfo, DeviceKind, Event, Frame, VideoMode};
 use crate::detect::{DetectParams, Detection, GrayImage, detect_circle};
 use crate::overlay::draw::{paint_dashed_circle, paint_overlay};
 use crate::overlay::{LayerId, Measurement, Overlay, Rescale};
 use crate::processing::Processing;
+use crate::register::{self, Prepared, Registration, Start};
 use crate::ui;
-use crate::view::{ViewState, ViewTransform};
+use crate::view::{EndlessDrag, ViewState, ViewTransform};
 
 /// Everything that survives a restart (stored by eframe).
 #[derive(Clone, Serialize, Deserialize)]
@@ -61,10 +65,10 @@ pub enum DragMode {
     Center {
         grab: Vec2,
     },
-    Radius(LayerId),
-    LayerOffset {
+    /// Resize a circle. The drag goes on past the screen edge, with the pointer hidden.
+    Radius {
         id: LayerId,
-        grab: Vec2,
+        drag: EndlessDrag,
     },
 }
 
@@ -79,21 +83,93 @@ pub enum JobKind {
     Calibration { step: usize, target: LayerId },
     /// Live camera-bias readout after a calibration, while the carrier screws turn: rim + target.
     LiveBias { target: LayerId },
+    /// Paper-target capture (0 = 0°, 1 = 180°): rim + the prepared view.
+    PaperCapture { step: usize },
+    /// Live paper-target bias readout: rim + the paper tracked from the 180° capture.
+    PaperLive,
 }
 
 /// Time between live bias measurements.
 const LIVE_INTERVAL: Duration = Duration::from_millis(250);
 
+/// What a background job sends back.
+pub enum JobOutput {
+    Circles(Vec<Option<Detection>>),
+    Paper(Result<PaperOutput, String>),
+}
+
+pub struct PaperOutput {
+    /// The prepared view, kept as the reference for the next step (captures only).
+    pub view: Option<Arc<Prepared>>,
+    /// From the previous reference to this view (180° capture and Live).
+    pub reg: Option<Registration>,
+}
+
 pub struct Job {
     pub kind: JobKind,
-    rx: Receiver<Vec<Option<Detection>>>,
+    rx: Receiver<JobOutput>,
+}
+
+/// Which centring calibration the panel shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CalibMode {
+    /// A sheet with squares inside the tube: centres the camera.
+    #[default]
+    Paper,
+    /// A layer's circle: separates camera bias from real misalignment.
+    Layer,
+}
+
+/// The paper-target centring.
+#[derive(Default)]
+pub struct PaperCalib {
+    /// Which of the 0° and 180° captures are done.
+    pub captured: [bool; 2],
+    /// The 0° view. Later views reuse its focuser ring for their mask, so the mask is
+    /// the same in both captures and in Live.
+    ref0: Option<Arc<Prepared>>,
+    ref180: Option<Arc<Prepared>>,
+    pub result: Option<PaperResult>,
+    /// Measure the camera bias live, for centring the camera with the carrier screws.
+    pub live: bool,
+    /// From the 180° capture to the last live frame; also seeds the next one.
+    pub live_reg: Option<Registration>,
+    pub live_bias: Option<Vec2>,
+    /// Live measurements that failed since the last good one.
+    pub live_failures: u32,
+    live_next: Option<Instant>,
+}
+
+impl PaperCalib {
+    pub fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    pub fn has_0deg_capture(&self) -> bool {
+        self.ref0.is_some()
+    }
+
+    pub fn start_live(&mut self) {
+        self.stop_live();
+        self.live = true;
+        // The screws are about to move the camera, so the 0° view can't be reused.
+        self.ref0 = None;
+    }
+
+    pub fn stop_live(&mut self) {
+        self.live = false;
+        self.live_reg = None;
+        self.live_bias = None;
+        self.live_failures = 0;
+        self.live_next = None;
+    }
 }
 
 #[derive(Default)]
 pub struct CalibrationState {
+    pub mode: CalibMode,
+    pub paper: PaperCalib,
     pub target: Option<LayerId>,
-    /// Use the current circle positions instead of auto-detect.
-    pub manual: bool,
     pub samples: [Option<RotationSample>; 2],
     pub result: Option<CalibrationResult>,
     /// Measure the camera bias live, for centring the camera with the carrier screws.
@@ -315,6 +391,7 @@ impl ColliViewApp {
         self.frozen = false;
         self.s.view.reset();
         self.calib.reset();
+        self.calib.paper.reset();
     }
 
     fn set_frame(&mut self, f: Frame) {
@@ -349,8 +426,8 @@ impl ColliViewApp {
         self.frame.as_ref().map(|f| f.image.clone())
     }
 
-    /// Start a detection job. `searches` are run in order on the same frame.
-    fn spawn_job(&mut self, kind: JobKind, searches: Vec<DetectParams>) {
+    /// Run `work` on the current frame in a background thread.
+    fn spawn_work(&mut self, kind: JobKind, work: impl FnOnce(Arc<ColorImage>) -> JobOutput + Send + 'static) {
         let Some(image) = self.current_image() else {
             self.error("No frame to analyse yet");
             return;
@@ -358,6 +435,15 @@ impl ColliViewApp {
         let (tx, rx) = std::sync::mpsc::channel();
         let ctx = self.ctx.clone();
         std::thread::spawn(move || {
+            let _ = tx.send(work(image));
+            ctx.request_repaint();
+        });
+        self.job = Some(Job { kind, rx });
+    }
+
+    /// Start a detection job. `searches` are run in order on the same frame.
+    fn spawn_job(&mut self, kind: JobKind, searches: Vec<DetectParams>) {
+        self.spawn_work(kind, move |image| {
             let gray = GrayImage::from_color_image(&image);
             let mut results = Vec::new();
             let mut prev: Option<Detection> = None;
@@ -372,10 +458,8 @@ impl ColliViewApp {
                 results.push(d);
                 prev = prev.or(d);
             }
-            let _ = tx.send(results);
-            ctx.request_repaint();
+            JobOutput::Circles(results)
         });
-        self.job = Some(Job { kind, rx });
     }
 
     pub fn detect_reference(&mut self) {
@@ -399,7 +483,7 @@ impl ColliViewApp {
         let o = &self.s.overlay;
         let Some(layer) = o.layer(id) else { return };
         let Some(r) = layer.radius() else { return };
-        let params = DetectParams::around(o.layer_center(layer), r, 0.15);
+        let params = DetectParams::around(o.center, r, 0.15);
         self.spawn_job(JobKind::Measure(id), vec![params]);
     }
 
@@ -408,12 +492,6 @@ impl ColliViewApp {
         let o = &self.s.overlay;
         let (Some(rim_r), Some(layer)) = (o.reference_radius(), o.layer(target)) else { return };
         let Some(r) = layer.radius() else { return };
-        if self.calib.manual {
-            let sample =
-                RotationSample { rim: Measurement { center: o.center, radius: rim_r }, target: o.layer_center(layer) };
-            self.store_calibration_sample(step, sample);
-            return;
-        }
         let rim = DetectParams::around(o.center, rim_r, 0.15);
         // The target search starts at the rim result (see `spawn_job`), so it does not
         // matter where the target circle currently sits.
@@ -446,6 +524,94 @@ impl ColliViewApp {
         }
     }
 
+    /// Paper target: prepare the view inside the focuser ring. At 180° also match it
+    /// against the 0° view. No circle is fitted: the ring only masks out the drawtube.
+    pub fn paper_capture(&mut self, step: usize) {
+        let (ring, reference) = match step {
+            0 => {
+                let o = &self.s.overlay;
+                let Some(r) = o.reference_radius() else { return };
+                ((o.center, r), None)
+            }
+            _ => match self.calib.paper.ref0.clone() {
+                Some(r) => ((r.mask_center, r.ring_radius), Some(r)),
+                None => return,
+            },
+        };
+        self.calib.paper.stop_live();
+        self.spawn_work(JobKind::PaperCapture { step }, move |image| {
+            JobOutput::Paper(paper_capture_work(&image, ring, reference.as_deref()))
+        });
+    }
+
+    /// One live measurement of the paper, for the carrier-screw readout.
+    fn paper_live_measure(&mut self) {
+        let p = &mut self.calib.paper;
+        let (Some(reference), Some(result)) = (p.ref180.clone(), p.result) else { return };
+        // The camera hasn't moved since the 180° capture when Live starts.
+        let seed = p.live_reg.unwrap_or(Registration::IDENTITY);
+        // A clearly worse match than the captures' means tracking slipped: search again.
+        let min_score = MIN_MATCH.max(0.9 * result.match_score);
+        p.live_next = Some(Instant::now() + LIVE_INTERVAL);
+        self.spawn_work(JobKind::PaperLive, move |image| {
+            JobOutput::Paper(paper_live_work(&image, &reference, seed, min_score))
+        });
+    }
+
+    fn run_paper_live(&mut self) {
+        let p = &self.calib.paper;
+        let ready = self.job.is_none()
+            && !self.frozen
+            && self.frame.is_some()
+            && p.result.is_some()
+            && p.live_next.is_none_or(|t| Instant::now() >= t);
+        if ready {
+            self.paper_live_measure();
+        }
+    }
+
+    fn on_paper_capture(&mut self, step: usize, out: Result<PaperOutput, String>) {
+        let PaperOutput { view, reg } = match out {
+            Ok(o) => o,
+            Err(e) => return self.error(format!("Paper target: {e}")),
+        };
+        let target = self.image_center();
+        let p = &mut self.calib.paper;
+        if step == 0 {
+            // A new 0° view: the 180° capture has to be redone against it.
+            p.reset();
+            p.captured[0] = true;
+            p.ref0 = view;
+            return;
+        }
+        let (Some(ref0), Some(reg), Some(target)) = (&p.ref0, reg, target) else { return };
+        match solve_paper(&reg, target, ref0.ring_radius) {
+            Ok(r) => {
+                p.captured[1] = true;
+                p.result = Some(r);
+                p.ref180 = view;
+            }
+            Err(e) => {
+                p.captured[1] = false;
+                p.result = None;
+                p.ref180 = None;
+                self.error(format!("Paper target: {e}"));
+            }
+        }
+    }
+
+    fn on_paper_live(&mut self, out: Result<PaperOutput, String>) {
+        let p = &mut self.calib.paper;
+        match (out, p.result) {
+            (Ok(PaperOutput { reg: Some(reg), .. }), Some(result)) => {
+                p.live_bias = Some(paper_live_bias(&result, &reg));
+                p.live_reg = Some(reg);
+                p.live_failures = 0;
+            }
+            _ => p.live_failures += 1,
+        }
+    }
+
     fn store_calibration_sample(&mut self, step: usize, sample: RotationSample) {
         self.calib.stop_live();
         self.calib.samples[step] = Some(sample);
@@ -457,7 +623,7 @@ impl ColliViewApp {
 
     fn poll_job(&mut self) {
         let Some(job) = &self.job else { return };
-        let results = match job.rx.try_recv() {
+        let output = match job.rx.try_recv() {
             Ok(r) => r,
             Err(TryRecvError::Empty) => return,
             Err(TryRecvError::Disconnected) => {
@@ -468,6 +634,16 @@ impl ColliViewApp {
         };
         let kind = job.kind;
         self.job = None;
+        match (kind, output) {
+            (JobKind::PaperCapture { step }, JobOutput::Paper(out)) => self.on_paper_capture(step, out),
+            // Dropped if the readout was turned off meanwhile.
+            (JobKind::PaperLive, JobOutput::Paper(out)) if self.calib.paper.live => self.on_paper_live(out),
+            (_, JobOutput::Circles(results)) => self.on_circles(kind, results),
+            _ => {}
+        }
+    }
+
+    fn on_circles(&mut self, kind: JobKind, results: Vec<Option<Detection>>) {
         let failed = "No clear circular edge found. Put the circle roughly on the feature, or widen the search";
         match kind {
             JobKind::Reference => match results.first().copied().flatten() {
@@ -517,7 +693,7 @@ impl ColliViewApp {
                     _ => self.calib.live_failures += 1,
                 }
             }
-            JobKind::LiveBias { .. } => {}
+            JobKind::LiveBias { .. } | JobKind::PaperCapture { .. } | JobKind::PaperLive => {}
         }
     }
 
@@ -611,8 +787,16 @@ impl ColliViewApp {
                 Color32::from_rgb(255, 170, 60),
             );
         }
-        // The live bias readout runs jobs back to back; it shows in its own panel.
-        if self.job.as_ref().is_some_and(|j| !matches!(j.kind, JobKind::LiveBias { .. })) {
+        let p = &self.calib.paper;
+        if self.calib.mode == CalibMode::Paper && (p.captured[0] || p.result.is_some()) {
+            let axis = p.result.map(|r| match (p.live, p.live_reg) {
+                (true, Some(reg)) => paper_live_axis(&r, &reg),
+                _ => r.c_paper,
+            });
+            paint_paper_axis(&painter, &vt, axis, (size / 2.0).to_pos2());
+        }
+        // The live bias readouts run jobs back to back; they show in their own panel.
+        if self.job.as_ref().is_some_and(|j| !matches!(j.kind, JobKind::LiveBias { .. } | JobKind::PaperLive)) {
             painter.text(
                 rect.left_top() + vec2(12.0, 12.0),
                 Align2::LEFT_TOP,
@@ -654,7 +838,7 @@ impl ColliViewApp {
             .overlay
             .selected_layer()
             .filter(|l| l.visible)
-            .and_then(|l| l.radius().map(|r| (l.id, vt.to_screen(self.s.overlay.layer_center(l)), r * vt.scale())));
+            .and_then(|l| l.radius().map(|r| (l.id, center_screen, r * vt.scale())));
         let near_edge = |p: Pos2| selected_circle.filter(|(_, c, r)| ((p - *c).length() - r).abs() <= 6.0).map(|s| s.0);
 
         if let Some(p) = hover
@@ -670,29 +854,20 @@ impl ColliViewApp {
         if response.drag_started()
             && let Some(p) = response.interact_pointer_pos()
         {
-            let alt = ui.input(|i| i.modifiers.alt);
             let img_p = vt.to_image(p);
-            let selected_offsettable = self
-                .s
-                .overlay
-                .selected
-                .filter(|id| *id != self.s.overlay.reference && self.s.overlay.layer(*id).is_some());
             self.drag =
                 Some(if response.dragged_by(PointerButton::Middle) || response.dragged_by(PointerButton::Secondary) {
                     DragMode::Pan
-                } else if let (true, Some(id)) = (alt, selected_offsettable) {
-                    let l = self.s.overlay.layer(id).unwrap();
-                    DragMode::LayerOffset { id, grab: self.s.overlay.layer_center(l) - img_p }
                 } else if near_center(p) {
                     DragMode::Center { grab: self.s.overlay.center - img_p }
                 } else if let Some(id) = near_edge(p) {
-                    DragMode::Radius(id)
+                    DragMode::Radius { id, drag: EndlessDrag::new(p) }
                 } else {
                     DragMode::Pan
                 });
         }
         if response.dragged()
-            && let (Some(mode), Some(p)) = (self.drag, response.interact_pointer_pos())
+            && let (Some(mode), Some(p)) = (&mut self.drag, response.interact_pointer_pos())
         {
             let img_p = vt.to_image(p);
             match mode {
@@ -700,28 +875,49 @@ impl ColliViewApp {
                     ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
                     self.s.view.pan_by(vt, response.drag_delta());
                 }
-                DragMode::Center { grab } => self.s.overlay.center = img_p + grab,
-                DragMode::Radius(id) => {
-                    let o = &mut self.s.overlay;
-                    if let Some(c) = o.layer(id).map(|l| o.layer_center(l)) {
-                        o.layer_mut(id).unwrap().set_radius((img_p - c).length());
+                DragMode::Center { grab } => self.s.overlay.center = img_p + *grab,
+                DragMode::Radius { id, drag } => {
+                    // Hidden while resizing: it gets moved back from the edges.
+                    ui.ctx().set_cursor_icon(CursorIcon::None);
+                    if let Some(to) = drag.update(p, response.rect) {
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::CursorPosition(to));
                     }
-                }
-                DragMode::LayerOffset { id, grab } => {
-                    let center = self.s.overlay.center;
-                    if let Some(l) = self.s.overlay.layer_mut(id) {
-                        l.offset = img_p + grab - center;
+                    let o = &mut self.s.overlay;
+                    let c = o.center;
+                    if let Some(l) = o.layer_mut(*id) {
+                        l.set_radius((vt.to_image(drag.virt) - c).length());
                     }
                 }
             }
         }
         if response.drag_stopped() {
+            if let Some(DragMode::Radius { id, drag }) = self.drag {
+                self.pointer_back_to_ring(ui, vt, response.rect, id, drag.virt);
+            }
             self.drag = None;
         }
         if response.double_clicked()
             && let Some(p) = response.interact_pointer_pos()
         {
             self.s.overlay.center = vt.to_image(p);
+        }
+    }
+
+    /// After a radius drag, show the pointer on the ring: towards where the drag ended,
+    /// or else nearest to where the pointer is. If neither is in the view, it stays put.
+    fn pointer_back_to_ring(&self, ui: &Ui, vt: &ViewTransform, view: Rect, id: LayerId, toward: Pos2) {
+        let o = &self.s.overlay;
+        let Some((c, r)) = o.layer(id).and_then(|l| l.radius().map(|r| (vt.to_screen(o.center), r * vt.scale())))
+        else {
+            return;
+        };
+        let on_ring = |p: Pos2| {
+            let d = p - c;
+            (d.length() > 1e-3).then(|| c + d.normalized() * r)
+        };
+        let now = ui.input(|i| i.pointer.latest_pos());
+        if let Some(q) = [Some(toward), now].into_iter().flatten().filter_map(on_ring).find(|q| view.contains(*q)) {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::CursorPosition(q));
         }
     }
 
@@ -825,6 +1021,58 @@ impl ColliViewApp {
     }
 }
 
+/// The sensor centre (○) and, once measured, where the focuser axis meets the paper (✕),
+/// joined by a line: the camera bias. Turning the carrier screws moves the ✕ onto the ○.
+fn paint_paper_axis(painter: &egui::Painter, vt: &ViewTransform, axis: Option<Pos2>, target: Pos2) {
+    let color = Color32::from_rgb(80, 200, 255);
+    let t = vt.to_screen(target);
+    painter.circle_stroke(t, 6.0, Stroke::new(2.0, color));
+    painter.text(t + vec2(10.0, -8.0), Align2::LEFT_BOTTOM, "sensor centre", FontId::proportional(13.0), color);
+    let Some(axis) = axis else { return };
+    let a = vt.to_screen(axis);
+    painter.line_segment([t, a], Stroke::new(1.5, color));
+    let st = Stroke::new(2.0, color);
+    painter.line_segment([a - vec2(7.0, 7.0), a + vec2(7.0, 7.0)], st);
+    painter.line_segment([a - vec2(7.0, -7.0), a + vec2(7.0, -7.0)], st);
+    painter.text(a + vec2(10.0, 8.0), Align2::LEFT_TOP, "axis at paper", FontId::proportional(13.0), color);
+}
+
+const RING_ERROR: &str = "the focuser ring is too small or too far outside the frame. Fit it to the drawtube \
+                          first (Auto-detect, D); roughly is enough";
+
+/// Prepare the view inside the ring (centre, radius) and, at 180°, match it to the 0° view.
+fn paper_capture_work(
+    image: &ColorImage,
+    (center, radius): (Pos2, f32),
+    reference: Option<&Prepared>,
+) -> Result<PaperOutput, String> {
+    let levels = reference.map_or_else(|| register::level_count(radius), |r| r.levels());
+    let view = Prepared::new(image, center, radius, levels, 0).ok_or(RING_ERROR)?;
+    let reg = match reference {
+        Some(r) => Some(
+            register::register(r, &view, &Start::half_turn(radius), 0).map_err(|e| PaperError::from(e).to_string())?,
+        ),
+        None => None,
+    };
+    Ok(PaperOutput { view: Some(Arc::new(view)), reg })
+}
+
+/// Track the paper from the 180° capture at half resolution.
+fn paper_live_work(
+    image: &ColorImage,
+    reference: &Prepared,
+    seed: Registration,
+    min_score: f32,
+) -> Result<PaperOutput, String> {
+    let view =
+        Prepared::new(image, reference.mask_center, reference.ring_radius, reference.levels(), 1).ok_or(RING_ERROR)?;
+    let reg = register::track(reference, &view, seed, 1, min_score).map_err(|e| PaperError::from(e).to_string())?;
+    if reg.score < MIN_MATCH {
+        return Err("lost the paper".into());
+    }
+    Ok(PaperOutput { view: None, reg: Some(reg) })
+}
+
 fn chrono_like_stamp() -> String {
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     secs.to_string()
@@ -836,6 +1084,10 @@ impl eframe::App for ColliViewApp {
         self.poll_job();
         if self.calib.live {
             self.run_live_bias();
+            ctx.request_repaint_after(LIVE_INTERVAL);
+        }
+        if self.calib.paper.live {
+            self.run_paper_live();
             ctx.request_repaint_after(LIVE_INTERVAL);
         }
         if self.job.is_some() {

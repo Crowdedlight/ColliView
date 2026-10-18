@@ -8,18 +8,13 @@ use crate::view::ViewTransform;
 /// Paint all visible layers. The top of the list is drawn last.
 pub fn paint_overlay(painter: &Painter, vt: &ViewTransform, overlay: &Overlay) {
     let diag = vt.image_size.length();
+    // Every layer sits on the shared centre.
+    let c = vt.to_screen(overlay.center);
     for layer in overlay.layers.iter().rev().filter(|l| l.visible) {
-        let c = vt.to_screen(overlay.layer_center(layer));
         let stroke = Stroke::new(layer.thickness, layer.color);
-        let selected = overlay.selected == Some(layer.id);
         match layer.kind {
             LayerKind::Circle { radius } => {
-                let r = radius * vt.scale();
-                if selected {
-                    let halo = Color32::from_rgba_unmultiplied(255, 255, 255, 40);
-                    painter.circle_stroke(c, r, Stroke::new(layer.thickness + 4.0, halo));
-                }
-                painter.circle_stroke(c, r, stroke);
+                painter.circle_stroke(c, radius * vt.scale(), stroke);
             }
             LayerKind::Crosshair { angle_deg } => {
                 let half = diag * vt.scale();
@@ -27,15 +22,14 @@ pub fn paint_overlay(painter: &Painter, vt: &ViewTransform, overlay: &Overlay) {
                 // view so flips mirror the crosshair together with the image.
                 for extra in [0.0_f32, 90.0] {
                     let a = (angle_deg + extra).to_radians();
-                    let p = overlay.layer_center(layer);
-                    let dir_screen = (vt.to_screen(p + Vec2::angled(a)) - c).normalized();
+                    let dir_screen = (vt.to_screen(overlay.center + Vec2::angled(a)) - c).normalized();
                     painter.line_segment([c - dir_screen * half, c + dir_screen * half], stroke);
                 }
             }
         }
     }
     if overlay.show_center_marker {
-        paint_center_marker(painter, vt.to_screen(overlay.center));
+        paint_center_marker(painter, c);
     }
 }
 

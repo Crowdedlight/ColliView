@@ -100,7 +100,7 @@ pub fn tools_panel(app: &mut ColliViewApp, ui: &mut Ui) {
 }
 
 fn profiles(app: &mut ColliViewApp, ui: &mut Ui) {
-    ui.label("Save the layers, calibration offsets and image settings per telescope.");
+    ui.label("Save the layers and image settings per telescope.");
     ui.horizontal(|ui| {
         if ui.button("Export…").clicked()
             && let Some(path) = rfd::FileDialog::new()
@@ -148,14 +148,16 @@ pub fn help_window(app: &mut ColliViewApp, ctx: &Context) {
              3. Secondary: tilt/rotate the secondary until its outline sits concentric in the green circle.\n\
              4. Primary: adjust the primary until its reflection, the clips and the centre spot line up with \
              the red, magenta and cyan circles.\n\
-             5. If your camera isn't perfectly centred, run 'Off-centre camera calibration' on the secondary \
-             and use Live to centre it with the adapter's carrier screws. Then calibrate once per layer.",
+             5. If your camera isn't perfectly centred, tape the centring target (calibration/ in the \
+             repository) or squared paper with pen marks inside the tube, run 'Off-centre camera calibration \
+             → Paper target' and use Live to centre it with the adapter's carrier screws. Then remove the \
+             paper and Auto-detect again.",
         );
         ui.heading("Mouse");
         ui.label(
             "Wheel: zoom around the cursor   ·   Drag empty space / right / middle: pan\n\
              Drag the white centre cross: move all circles   ·   Double-click: set centre\n\
-             Drag the selected circle's edge: resize   ·   Alt+drag: move the selected layer's offset",
+             Drag the selected circle's edge: resize (keeps going past the screen edge)",
         );
         ui.heading("Keys");
         ui.label(
