@@ -3,7 +3,7 @@
 # 2 mm and 3 mm acrylic into hardware/out/.
 #
 # Usage: ./build.sh [extra openscad -D overrides...]
-#   e.g. ./build.sh -D 'camera="ov9726_hbv"' -D barrel_od=50.7
+#   e.g. ./build.sh -D barrel_od=50.7 -D acrylic_t=2.9
 set -eu
 cd "$(dirname "$0")"
 OPENSCAD="${OPENSCAD:-openscad}"

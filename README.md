@@ -1,94 +1,74 @@
 # ColliView
 
-Live USB-camera collimation aid for Newtonian telescopes, in the spirit of the OCAL.
-Put a camera in the focuser and line up the drawtube, the secondary and the primary
-reflections with adjustable concentric circles drawn over the live view.
-Runs on Windows and Linux; written in Rust with [egui](https://github.com/emilk/egui).
+A live USB-camera collimation aid for Newtonian telescopes, like an electronic OCAL. Put the camera in
+the focuser, and line up the drawtube, the secondary and the primary reflections with concentric
+circles drawn over the live view. It runs on Windows and Linux, and is written in Rust with
+[egui](https://github.com/emilk/egui).
+
+The camera sits in a 3D-printed 2" adapter with a diffused LED light ring. See [hardware/](hardware/README.md)
+for the model, the camera presets and the build.
 
 ## Features
 
-- **Live view** from any UVC webcam or camera module (MJPEG/YUYV/NV12), with a resolution and frame-rate picker.
-- **Camera controls**, generated from what the camera offers: focus, exposure, gain, white balance,
-  brightness, contrast and more, each with an *auto* toggle. **Manual focus** has its own section with
-  fine steps (Windows through `IAMCameraControl`, Linux through V4L2). It is hidden when the camera has no focus motor.
-- **Layered circles** sharing one centre, like layers in an image editor: per-layer colour, line width,
-  radius and visibility; add, duplicate, reorder and delete layers. A rotatable **crosshair** layer helps
-  check spider vanes and secondary rotation.
-- The **shared centre** moves with x/y fields, arrow keys (1 / 10 / 0.1 px) or by dragging the centre cross.
-  Drag a circle's edge to resize it.
-- Overlays are stored in **sensor-pixel coordinates**, so they stay locked to the image when the window
-  is resized, zoomed, panned or flipped.
-- **Zoom** with the mouse wheel around the cursor, Fit / 1:1 / 2× / 4× / 8× presets, *zoom on centre*,
-  and sharp nearest-neighbour pixels when zoomed in.
-- **Auto-detect** fits the focuser ring and the shared centre to the drawtube edge with sub-pixel accuracy
-  (radial edge search, RANSAC, geometric least squares), shown as a preview you accept or reject.
-  **Measure** fits any other layer's feature and reports how far off it is.
-- All layers share the reference ring's centre, so lining features up on one centre is all there is to it.
-- **Camera centring check** with a printable two-depth **jig**: a live readout shows how far the lens sits
-  off the barrel's axis, in mm, and which way to push the camera board. A sensor a few pixels off-centre or
-  a tilted camera doesn't matter; the circles follow the drawtube. See [hardware/ §5](hardware/README.md#5-check-the-camera-centring).
-- **Software image tools**: brightness, contrast, gamma, invert, greyscale, frame averaging for a dim tube,
-  and display flip / rotate 180°.
-- Freeze frame, PNG **snapshots** at sensor resolution (with or without overlays), **per-telescope profiles**
-  (JSON), and automatic restore of the last session.
-- A built-in **simulated Newtonian** test pattern, to try everything without a camera.
-- A parametric **3D-printable 2" adapter** with a laser-cut diffuser light ring: see [hardware/](hardware/README.md).
+- Live view from any UVC camera (MJPEG/YUYV/NV12), with a resolution and frame-rate picker.
+- Native camera controls (focus, exposure, gain, white balance, …), each with an auto toggle.
+  These use Media Foundation on Windows and V4L2 on Linux.
+- Concentric circle and crosshair layers on one shared centre. They are stored in sensor pixels, so
+  they stay locked to the image when you zoom, pan or flip.
+- **Auto-detect** fits the reference ring and the centre to the drawtube edge with sub-pixel accuracy.
+  **Measure** reports how far another feature is off centre.
+- A camera centring check with a printed jig, which reads the lens's offset from the barrel axis in mm.
+- Image tools (brightness, contrast, gamma, invert, frame averaging), freeze, PNG snapshots,
+  per-telescope JSON profiles, and a simulated Newtonian test pattern for trying it without a camera.
 
-## Building
+## Running
 
-Requires Rust **1.95 or newer** (egui 0.36): `rustup update stable`.
+Download the Windows or Linux build from [Releases](https://github.com/Crowdedlight/ColliView/releases), or build from source with
+Rust ≥ 1.95:
 
 ```sh
 cargo run --release
 ```
 
-**Linux** needs a few system packages (Debian/Ubuntu names):
+On Linux, building needs these packages (Debian/Ubuntu names), and camera access needs the `video` group:
 
 ```sh
 sudo apt install build-essential pkg-config libclang-dev libxkbcommon-dev libwayland-dev
-sudo usermod -aG video $USER   # access to /dev/video*; log in again afterwards
+sudo usermod -aG video $USER   # log in again afterwards
 ```
 
-`libclang-dev` is for the V4L2 bindings (bindgen). File dialogs use the XDG desktop portal.
+Pushing a `v*` tag builds both platforms and attaches them to a GitHub release
+(see [`.github/workflows/release.yml`](.github/workflows/release.yml)).
 
-## Using it
+## Usage
 
-1. Insert the camera adapter, light the tube and pick the camera in the top bar.
-2. Press **D** (Auto-detect). Check that the dashed orange circle sits on the drawtube's far edge and click **Accept**.
-   The yellow *Focuser drawtube* ring (★, the reference) and the shared centre now follow the drawtube.
-3. **Secondary:** adjust the secondary until its outline is concentric with the green circle.
-   Select the layer and click **Measure** to get the remaining offset in pixels.
-4. **Primary:** adjust the primary until its reflection, clips, the light ring's reflection and the centre spot
-   line up with the red, magenta and cyan circles.
-5. Save a **profile** for the telescope. Check the camera's centring once with the
-   [centring jig](hardware/README.md#5-check-the-camera-centring) (**Camera centring (jig)**).
+1. Put the adapter in the focuser, light the tube and pick the camera in the top bar.
+2. Press **D** to auto-detect the drawtube edge, check the dashed preview and click **Accept**.
+3. Adjust the secondary until its outline is concentric with the green circle.
+4. Adjust the primary until its reflection, the clips and the centre spot line up with the red,
+   magenta and cyan circles.
+5. Save a profile for the telescope.
 
-| Input | Action |
+The app's **Help** window lists the mouse and keyboard controls. The main keys:
+
+| Key | Action |
 |---|---|
-| Mouse wheel | Zoom around the cursor |
-| Drag on empty space, or right/middle drag | Pan |
-| Drag the white centre cross / double-click | Move / set the shared centre |
-| Drag the selected circle's edge | Resize it (keeps going past the screen edge) |
-| Arrow keys | Nudge the centre 1 px (Shift 10 px, Ctrl 0.1 px) |
+| Arrows | Nudge the centre 1 px (Shift 10 px, Ctrl 0.1 px) |
 | `[` / `]` | Shrink / grow the selected circle |
 | `+` / `−` / `0` | Zoom in / out / fit |
 | `D` / `F` / `H` / `F11` | Auto-detect / freeze / hide panels / full screen |
 
-## How it works
-
-| Path | What it does |
-|---|---|
-| `src/camera/` | Worker thread that owns capture and controls. It sends frames through a single-slot mailbox. |
-| `src/camera/nokhwa_capture.rs` | Capture through [nokhwa](https://crates.io/crates/nokhwa). |
-| `src/camera/controls/` | Native controls. nokhwa can't switch a control from auto to manual on Windows, so ColliView opens a second Media Foundation source (Windows) or `/dev/videoN` handle (Linux) just for controls. |
-| `src/view.rs` | The sensor↔screen transform shared by the texture and the overlays. |
-| `src/overlay/` | Layers, presets, resolution changes. |
-| `src/detect.rs` | Circle detection. |
-| `src/jig.rs` | The centring jig's geometry: lens offset in mm from its two fitted holes. |
-| `src/camera/test_pattern.rs` | The simulated Newtonian (or the view into the jig), also used by the tests. |
-| `examples/controls_spike.rs` | The Windows check that manual focus works while streaming. |
+## Development
 
 ```sh
-cargo test     # transforms, circle fitting, detection, the jig readout, processing, profiles
+cargo test
 cargo clippy --all-targets
 ```
+
+| Path | What |
+|---|---|
+| `src/camera/` | Capture worker thread ([nokhwa](https://crates.io/crates/nokhwa)) and the test pattern. |
+| `src/camera/controls/` | Native controls. nokhwa can't switch a control from auto to manual on Windows, so these open a second Media Foundation source (Windows) or a `/dev/videoN` handle (Linux). |
+| `src/overlay/`, `src/view.rs` | Layers, and the sensor↔screen transform. |
+| `src/detect.rs`, `src/jig.rs` | Circle detection, and the centring jig's geometry. |
+| `hardware/` | The OpenSCAD adapter model, its build scripts and docs. |

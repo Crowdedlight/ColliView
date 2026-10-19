@@ -2,7 +2,7 @@
 # 2 mm and 3 mm acrylic into hardware\out\.
 #
 # Usage: .\build.ps1 [-Extra '<openscad -D overrides>']
-#   e.g. .\build.ps1 -Extra '-D camera=\"ov9726_hbv\" -D barrel_od=50.7'
+#   e.g. .\build.ps1 -Extra '-D barrel_od=50.7 -D acrylic_t=2.9'
 # Set $env:OPENSCAD to use an openscad.com that is not on PATH.
 param([string]$Extra = "")
 $ErrorActionPreference = "Stop"

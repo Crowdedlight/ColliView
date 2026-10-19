@@ -23,7 +23,7 @@ flange_t = 4;
 flange_extra = 5;
 
 /* [Camera module] */
-camera = "imx179_db05"; // [ov3660_hbv, ov9726_hbv, imx179_db05, generic_38, custom]
+camera = "imx179_db05"; // [imx179_db05, custom]
 // Used when camera = "custom": PCB width, height, thickness
 custom_pcb = [30, 25, 1.6];
 // Mounting hole pitch x, y (0, 0 = no holes; corner supports are used instead)
@@ -109,12 +109,12 @@ jig_floor_t = 2;
 // 2.5 mm holes on a 23 mm square (two of them open slots). The voice-coil focus can is
 // 8.46 x 8.46 mm and 4.5 mm tall plus ~0.1 mm of lens, and it sits centred. The
 // connector's pins stick out 2.35 mm on the lens side, under the 3 mm stand-off.
+//
+// To add a board: add a line here and its name to the `camera` list above.
 function preset(name) =
-    name == "ov3660_hbv" ? [[30, 25, 1.6], [0, 0], [14, 14], [0, 0], 14, 12] :
-    name == "ov9726_hbv" ? [[32, 32, 1.6], [28, 28], [14, 14], [0, 0], 14, 12] :
     name == "imx179_db05" ? [[28, 28, 1.12], [23, 23], [8.5, 8.5], [0, 0], 12, 4.6] :
-    name == "generic_38" ? [[38, 38, 1.6], [34, 34], [16, 16], [0, 0], 14, 12] :
-    [custom_pcb, custom_holes, custom_holder, custom_lens_offset, custom_lens_body_d, custom_lens_drop];
+    name == "custom" ? [custom_pcb, custom_holes, custom_holder, custom_lens_offset, custom_lens_body_d, custom_lens_drop] :
+    assert(false, str("unknown camera '", name, "'"));
 
 P = preset(camera);
 pcb = P[0];
