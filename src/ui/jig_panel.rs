@@ -1,5 +1,7 @@
 use egui::{Color32, DragValue, RichText, Ui};
 
+use super::endless::endless;
+
 use crate::app::{ColliViewApp, JobKind};
 use crate::jig::JigGeometry;
 
@@ -77,7 +79,7 @@ pub fn jig_panel(app: &mut ColliViewApp, ui: &mut Ui) {
         let mm = |ui: &mut Ui, label: &str, v: &mut f32| {
             ui.horizontal(|ui| {
                 ui.label(label);
-                ui.add(DragValue::new(v).range(1.0..=500.0).speed(0.1).fixed_decimals(1).suffix(" mm"));
+                endless(ui.add(DragValue::new(v).range(1.0..=500.0).speed(0.1).fixed_decimals(1).suffix(" mm")));
             });
         };
         mm(ui, "Aperture Ø", &mut g.near_d);
@@ -100,8 +102,8 @@ pub fn simulator_panel(app: &mut ColliViewApp, ui: &mut Ui) {
     let vec = |ui: &mut Ui, label: &str, v: &mut [f32; 2], range: f32, speed: f32| {
         ui.horizontal(|ui| {
             ui.label(label);
-            ui.add(DragValue::new(&mut v[0]).speed(speed).range(-range..=range).prefix("x "));
-            ui.add(DragValue::new(&mut v[1]).speed(speed).range(-range..=range).prefix("y "));
+            endless(ui.add(DragValue::new(&mut v[0]).speed(speed).range(-range..=range).prefix("x ")));
+            endless(ui.add(DragValue::new(&mut v[1]).speed(speed).range(-range..=range).prefix("y ")));
         });
     };
     ui.checkbox(&mut s.jig, "Show the centring jig instead of the telescope");
@@ -114,7 +116,12 @@ pub fn simulator_panel(app: &mut ColliViewApp, ui: &mut Ui) {
         vec(ui, "Secondary error", &mut s.secondary_error, 60.0, 0.1);
         vec(ui, "Primary error", &mut s.primary_error, 60.0, 0.1);
         ui.horizontal(|ui| {
-            ui.add(egui::Slider::new(&mut s.rotation_deg, 0.0..=359.0).text("adapter rotation °"));
+            ui.add(
+                egui::Slider::new(&mut s.rotation_deg, 0.0..=359.0)
+                    .step_by(1.0)
+                    .smart_aim(false)
+                    .text("adapter rotation °"),
+            );
             if ui.button("+180°").clicked() {
                 s.rotation_deg = (s.rotation_deg + 180.0) % 360.0;
             }

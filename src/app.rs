@@ -16,6 +16,7 @@ use crate::overlay::draw::{paint_dashed_circle, paint_overlay};
 use crate::overlay::{LayerId, Measurement, Overlay, Rescale};
 use crate::processing::Processing;
 use crate::ui;
+use crate::ui::endless::EndlessFields;
 use crate::view::{EndlessDrag, ViewState, ViewTransform};
 
 /// Everything that survives a restart (stored by eframe).
@@ -125,6 +126,7 @@ pub struct ColliViewApp {
     pub frame: Option<Frame>,
     pub frozen: bool,
     drag: Option<DragMode>,
+    endless: EndlessFields,
     pub cursor_image: Option<Pos2>,
     pub job: Option<Job>,
     pub preview: Option<Detection>,
@@ -158,6 +160,7 @@ impl ColliViewApp {
             frame: None,
             frozen: false,
             drag: None,
+            endless: EndlessFields::default(),
             cursor_image: None,
             job: None,
             preview: None,
@@ -850,6 +853,12 @@ impl eframe::App for ColliViewApp {
         }
         egui::CentralPanel::no_frame().show(ui, |ui| self.central_view(ui));
         ui::help_window(self, &ctx);
+        self.endless.output(&ctx);
+    }
+
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        let window = raw_input.screen_rect.unwrap_or_else(|| ctx.viewport_rect());
+        self.endless.input(raw_input, window);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

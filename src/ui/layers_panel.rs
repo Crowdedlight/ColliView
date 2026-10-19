@@ -1,5 +1,7 @@
 use egui::{Color32, DragValue, RichText, Ui, vec2};
 
+use super::endless::endless;
+
 use crate::app::{ColliViewApp, JobKind};
 use crate::overlay::LayerKind;
 
@@ -18,9 +20,9 @@ fn centre_section(app: &mut ColliViewApp, ui: &mut Ui) {
     let c = &mut app.s.overlay.center;
     ui.horizontal(|ui| {
         ui.label("x");
-        ui.add(DragValue::new(&mut c.x).speed(0.1).fixed_decimals(1).suffix(" px"));
+        endless(ui.add(DragValue::new(&mut c.x).speed(0.1).fixed_decimals(1).suffix(" px")));
         ui.label("y");
-        ui.add(DragValue::new(&mut c.y).speed(0.1).fixed_decimals(1).suffix(" px"));
+        endless(ui.add(DragValue::new(&mut c.y).speed(0.1).fixed_decimals(1).suffix(" px")));
     });
     ui.horizontal(|ui| {
         if ui.button("To image centre").clicked()
@@ -53,7 +55,8 @@ fn detect_section(app: &mut ColliViewApp, ui: &mut Ui) {
             .on_hover_text("Search 8–55 % of the frame from the image centre instead of near the current ring");
         ui.add_enabled_ui(!app.s.detect_wide, |ui| {
             let mut pct = app.s.detect_tolerance * 100.0;
-            if ui.add(DragValue::new(&mut pct).range(5.0..=60.0).speed(0.5).prefix("radius ±").suffix(" %")).changed()
+            if endless(ui.add(DragValue::new(&mut pct).range(5.0..=60.0).speed(0.5).prefix("radius ±").suffix(" %")))
+                .changed()
             {
                 app.s.detect_tolerance = pct / 100.0;
             }
@@ -150,13 +153,15 @@ fn selected_layer(app: &mut ColliViewApp, ui: &mut Ui) {
             ui.label("Colour");
             ui.color_edit_button_srgba(&mut layer.color);
             ui.label("Width");
-            ui.add(DragValue::new(&mut layer.thickness).range(0.5..=12.0).speed(0.05).suffix(" px"));
+            endless(ui.add(DragValue::new(&mut layer.thickness).range(0.5..=12.0).speed(0.05).suffix(" px")));
         });
         match &mut layer.kind {
             LayerKind::Circle { radius } => {
                 ui.horizontal(|ui| {
                     ui.label("Radius");
-                    ui.add(DragValue::new(radius).range(0.5..=10000.0).speed(0.1).fixed_decimals(1).suffix(" px"));
+                    endless(
+                        ui.add(DragValue::new(radius).range(0.5..=10000.0).speed(0.1).fixed_decimals(1).suffix(" px")),
+                    );
                     if let Some(rr) = ref_radius
                         && id != reference
                     {
@@ -167,7 +172,15 @@ fn selected_layer(app: &mut ColliViewApp, ui: &mut Ui) {
             LayerKind::Crosshair { angle_deg } => {
                 ui.horizontal(|ui| {
                     ui.label("Angle");
-                    ui.add(egui::Slider::new(angle_deg, -90.0..=90.0).suffix("°").fixed_decimals(1));
+                    // Whole degrees. Up to a point per degree wide, so the mouse can reach each one.
+                    ui.spacing_mut().slider_width = (ui.available_width() - 50.0).clamp(100.0, 180.0);
+                    ui.add(
+                        egui::Slider::new(angle_deg, -90.0..=90.0)
+                            .step_by(1.0)
+                            .smart_aim(false)
+                            .suffix("°")
+                            .fixed_decimals(0),
+                    );
                 });
             }
         }

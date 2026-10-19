@@ -1,6 +1,7 @@
 //! Panels around the live view.
 
 mod camera_panel;
+pub mod endless;
 mod image_panel;
 mod jig_panel;
 mod layers_panel;
@@ -154,7 +155,8 @@ pub fn help_window(app: &mut ColliViewApp, ctx: &Context) {
         ui.label(
             "Wheel: zoom around the cursor   ·   Drag empty space / right / middle: pan\n\
              Drag the white centre cross: move all circles   ·   Double-click: set centre\n\
-             Drag the selected circle's edge: resize (keeps going past the screen edge)",
+             Drag the selected circle's edge: resize (keeps going past the screen edge)\n\
+             Drag a number field sideways: change it (also keeps going; Shift for fine steps)",
         );
         ui.heading("Keys");
         ui.label(
