@@ -4,6 +4,7 @@
  project like this with both code and 3D models. As well as help me build it in shorter time.*** 
 
 <img width="1895" height="1182" alt="Image" src="https://github.com/user-attachments/assets/1de6d236-18e5-4d32-9706-beb13c804066" />
+<img width="3702" height="3746" alt="Image" src="https://github.com/user-attachments/assets/5b42a68a-e40b-4621-bb35-460b3067f977" />
 
 This is my DIY camera collimation project. I was inspired by OCAL but wanted to make my own. Last year I took a simple logitech
  webcam and 3D printed a mount and used that to try and collimate with various success. This season I wanted to upgrade it
