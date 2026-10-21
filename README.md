@@ -1,6 +1,6 @@
 # ColliView
 
-***Full disclaimer, most of this projects code and 3D model is AI assisted as I wanted to test the capabilities for a hobby
+***Full disclaimer, most of this projects code and 3D model is AI assisted as I wanted to test the AI's capabilities for a hobby
  project like this with both code and 3D models. As well as help me build it in shorter time.*** 
 
 <img width="1895" height="1182" alt="Image" src="https://github.com/user-attachments/assets/1de6d236-18e5-4d32-9706-beb13c804066" />
