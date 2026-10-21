@@ -149,7 +149,9 @@ pub fn help_window(app: &mut ColliViewApp, ctx: &Context) {
              3. Secondary: tilt/rotate the secondary until its outline sits concentric in the green circle.\n\
              4. Primary: adjust the primary until its reflection, the clips and the centre spot line up with \
              the red, magenta and cyan circles.\n\
-             5. To check that the lens sits on the axis, use the printed centring jig: see 'Camera centring (jig)'. A few pixels of sensor offset or camera tilt don't matter: the circles follow the drawtube.",
+             5. To check that the lens sits on the axis, use the printed centring jig: see 'Camera centring (jig)'. \
+             It doesn't move the circles. A few pixels of sensor offset or camera tilt don't matter: the circles \
+             follow the drawtube.",
         );
         ui.heading("Mouse");
         ui.label(

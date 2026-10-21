@@ -35,3 +35,6 @@ opt-level = 1
 [profile.dev.package."*"]
 # Image decoding and processing are painfully slow unoptimized.
 opt-level = 2
+
+[build-dependencies]
+winresource = "0.1.34"

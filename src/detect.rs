@@ -123,6 +123,12 @@ impl DetectParams {
         }
     }
 
+    /// Search 8–55 % of the frame from the image centre.
+    pub fn wide(size: Vec2) -> Self {
+        let m = size.x.min(size.y);
+        Self { radius_min: 0.08 * m, radius_max: 0.55 * m, ..Self::around((size / 2.0).to_pos2(), 0.3 * m, 0.0) }
+    }
+
     pub fn with_polarity(self, polarity: Polarity) -> Self {
         Self { polarity, ..self }
     }

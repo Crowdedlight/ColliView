@@ -112,19 +112,16 @@ Set `part = "exploded"`, `"section"` or `"top_view"` to view these in OpenSCAD. 
 
 Ideally you would want the sensor of the camera sensor in the middle of your barrel so it would match your astro or DSLR camera. Minor offsets is alright with most telescopes as you set the center-point for the concentric circles based on the focuser tube anyway.
 
-But if you want to minimize the error of the camera sitting outside the axis of the focuser and use the floating carrier with nylon-tipped screws then you can print the jig.stl and put it on a backlight screen like a phone on a white background. Looking through the live-view after clicking "to image center" will put the rings on the center of your camera sensor. You can then adjust the screws until the center is concentric in the middle of the view. 
+If you want to minimize the error of the camera sitting outside the axis of the focuser and use the floating carrier with nylon-tipped screws, then you can print the jig.stl and put it on a backlight screen like a phone on a white background.
 
 A tenth or two of a millimetre is fine at about f/5; Use a compression-ring focuser if you can to avoid it being pushed to one side by a screw.
 
-`jig.stl` holds the adapter by its barrel. Its two holes on the axis line up, as seen through the
-camera, when the lens is centred. The model prints its dimensions as `Centring jig: …`.
-
 1. Stand the jig on a backlight, such as a phone screen, and put the adapter in.
-2. In ColliView, open **Camera centring (jig)**. Click **Find aperture**, **Accept** the preview,
-   and tick **Live**.
-3. Loosen the board's screws and nudge it the way the arrow points, until the offset turns green
-   (< 0.05 mm). Then tighten the screws and check again. Some cameras mirror the image, so check the
-   arrow's direction with a small nudge first.
-4. Turn the adapter 180° and average the two readings: that cancels any print error in the jig.
+2. In ColliView, open **Camera centring (jig)** and tick **Live**.
+3. Loosen the board's screws and nudge it the way the arrow points or until the lens offset turns green
+   (< 0.05 mm) and you can see the sensor center is in the center of the light up pinhole. Then tighten the screws and check again.
+4. Turn the adapter 180° and check its still centered so there is no skew in your printed jig model
+
+**Axis vs sensor centre** shows the tilt or lens-over-sensor offset when the camera is aligned over the two holes. The screws can't fix this, but minor offsets here is still precise enough for most collimations since the circles follow the drawtube. If it's large, check that the carrier sits flat in the head and their faces are smooth.
 
 <img width="1801" height="952" alt="Image" src="https://github.com/user-attachments/assets/034aab5d-d315-44b6-88b7-5ee9e891f608" />

@@ -2,7 +2,7 @@ use egui::{Color32, DragValue, RichText, Ui};
 
 use super::endless::endless;
 
-use crate::app::{ColliViewApp, JobKind};
+use crate::app::ColliViewApp;
 use crate::jig::JigGeometry;
 
 const GOOD: Color32 = Color32::from_rgb(140, 220, 140);
@@ -15,28 +15,18 @@ const CENTRED_MM: f32 = 0.05;
 pub fn jig_panel(app: &mut ColliViewApp, ui: &mut Ui) {
     ui.label(
         "Checks that the lens sits on the barrel's axis, with the printed centring jig (part \"jig\" in \
-         the adapter model). Stand the jig on a backlight, such as a phone showing white or a light pad, \
-         and put the adapter in it.",
+         the adapter model). The two holes line up when the lens is on the line through them, whichever \
+         way the camera points, so camera tilt doesn't affect the reading. Stand the jig on a backlight, \
+         such as a phone showing white or a light pad, and put the adapter in it.",
     );
     ui.label(
-        "1. Find the aperture and Accept the preview (left panel): the yellow ring goes on the jig's wide \
-         aperture. If its edge is too dark, dim the backlight or set the exposure by hand.\n\
-         2. Tick Live, loosen the camera board's screws and nudge the board until the offset reads about \
-         0. Tighten them and check again.",
+        "Tick Live, loosen the camera board's screws and nudge the board until the lens offset reads about \
+         0. Tighten them and check again. Only the camera moves: the rings and the shared centre stay put. \
+         If the aperture isn't found, dim the backlight or set the exposure by hand.",
     );
-    let busy = app.job.as_ref().is_some_and(|j| j.kind == JobKind::Reference);
-    if ui
-        .add_enabled(!busy && app.frame.is_some(), egui::Button::new("Find aperture"))
-        .on_hover_text("Searches the whole view for the aperture's edge (dark inside, bright outside)")
-        .clicked()
-    {
-        app.jig.stop();
-        app.find_jig_aperture();
-    }
     let mut live = app.jig.live;
-    let ready = app.frame.is_some() && app.s.overlay.reference_radius().is_some();
-    ui.add_enabled(ready || live, egui::Checkbox::new(&mut live, "Live"))
-        .on_hover_text("Fits the aperture and the hole several times a second");
+    ui.add_enabled(app.frame.is_some() || live, egui::Checkbox::new(&mut live, "Live"))
+        .on_hover_text("Finds the wide aperture and the backlit hole several times a second");
     if live != app.jig.live {
         if live {
             app.jig.live = true;
@@ -47,10 +37,23 @@ pub fn jig_panel(app: &mut ColliViewApp, ui: &mut Ui) {
     if app.jig.live {
         match app.jig.fits {
             Some((near, far)) => {
-                let e = app.s.jig.lens_offset_mm(&near, &far);
+                let g = app.s.jig;
+                let e = g.lens_offset_mm(&near, &far);
                 let text = RichText::new(format!("Lens offset:  {:+.2}, {:+.2} mm  ({:.2} mm)", e.x, e.y, e.length()))
                     .strong();
                 ui.label(if e.length() <= CENTRED_MM { text.color(GOOD) } else { text });
+                if let Some(ic) = app.image_center() {
+                    let a = g.axis_point(&near, &far) - ic;
+                    let deg = (a.length() / g.focal_px(near.radius).max(1e-6)).atan().to_degrees();
+                    ui.label(format!("Axis vs sensor centre:  {:+.1}, {:+.1} px  (≈ {deg:.2}°)", a.x, a.y))
+                        .on_hover_text(
+                            "Where the two holes meet once the lens is centred: where the barrel's axis lands \
+                             on the sensor.\nCamera tilt, or the lens sitting off-centre over the sensor, moves \
+                             both holes alike, so the lens offset ignores it and the screws can't fix it.\n\
+                             Collimation doesn't need it either: the circles follow the drawtube. If it's large, \
+                             check that the carrier sits flat in the head.",
+                        );
+                }
                 ui.label(format!("Aperture fit {}, hole fit {}", near.quality(), far.quality()));
                 ui.small(
                     "The arrow in the view shows which way to push the board; check it with a small nudge, as \

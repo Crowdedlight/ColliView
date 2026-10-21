@@ -134,14 +134,15 @@ impl Scene {
     }
 
     /// Where the jig's holes appear: the near aperture (centre, radius) and the far hole.
-    /// A camera tilt or an off-centre sensor (`axis_offset`) moves both alike; the lens
-    /// offset moves the far hole against the aperture.
+    /// The jig's axis shows `axis_offset` from the image centre (a camera tilt, or the lens
+    /// off-centre over the sensor), and a hole at depth z shows at axis − f·e/z for a lens
+    /// offset e: the near one moves more.
     pub fn jig_geometry(&self, width: u32, height: u32) -> ((Pos2, f32), (Pos2, f32)) {
         let jig = JigGeometry::default();
         let r = 0.3 * width.min(height) as f32;
-        let near = pos2(width as f32 / 2.0, height as f32 / 2.0) + Vec2::from(self.axis_offset);
-        let far = near + Vec2::from(self.jig_lens_offset_mm) * jig.px_per_mm(r);
-        ((near, r), (far, r * jig.far_radius_ratio()))
+        let axis = pos2(width as f32 / 2.0, height as f32 / 2.0) + Vec2::from(self.axis_offset);
+        let fe = Vec2::from(self.jig_lens_offset_mm) * jig.focal_px(r);
+        ((axis - fe / jig.near_dist, r), (axis - fe / jig.far_dist, r * jig.far_radius_ratio()))
     }
 
     fn render_jig(&self, width: u32, height: u32) -> Vec<u8> {
@@ -257,7 +258,7 @@ impl Capture for TestPatternCapture {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::detect::{DetectParams, GrayImage, Polarity, detect_circle};
+    use crate::detect::{DetectParams, Detection, GrayImage, Polarity, detect_circle};
     use crate::overlay::Measurement;
 
     const W: u32 = 960;
@@ -291,40 +292,39 @@ mod tests {
         assert!((m.radius - g.rim.1).abs() < 0.5);
     }
 
+    /// The lens offset reads the same with the axis off the sensor centre, and the axis
+    /// point reads that offset.
     #[test]
     fn jig_reads_the_lens_offset() {
         let jig = JigGeometry::default();
+        let centre = pos2(W as f32 / 2.0, H as f32 / 2.0);
         for e in [[0.2, -0.1], [0.0, 0.0], [-0.6, 0.4]] {
             let scene = Scene { jig: true, jig_lens_offset_mm: e, axis_offset: [14.0, -9.0], ..Default::default() };
             let ((c, r), _) = scene.jig_geometry(W, H);
             // Out of focus: the aperture is nearer than the lens's closest focus.
             let img = gray(&scene).blurred(2.0);
-            // As the app does: the aperture from the accepted ring, then the hole from there.
-            let near_p = DetectParams::around(c + vec2(3.0, -2.0), 1.03 * r, 0.12).with_polarity(Polarity::DarkInside);
-            let near = detect_circle(&img, &near_p).unwrap();
-            let far_p = DetectParams::around(near.center, near.radius * jig.far_radius_ratio(), 0.5)
-                .with_polarity(Polarity::BrightInside);
-            let far = detect_circle(&img, &far_p).unwrap();
-            let got = jig.lens_offset_mm(&near, &far);
-            let tol = if e == [0.0, 0.0] { 0.01 } else { 0.02 };
-            assert!((got - Vec2::from(e)).length() < tol, "{got:?} vs {e:?}");
+            // As the live readout does: from scratch, then from a slightly stale last fit.
+            let stale = Detection { center: c + vec2(3.0, -2.0), radius: 1.03 * r, inlier_ratio: 1.0, rms: 0.1 };
+            for seed in [None, Some(&stale)] {
+                let (near, far) = crate::jig::measure(&img, seed, &jig).expect("holes not found");
+                let got = jig.lens_offset_mm(&near, &far);
+                let tol = if e == [0.0, 0.0] { 0.01 } else { 0.02 };
+                assert!((got - Vec2::from(e)).length() < tol, "{got:?} vs {e:?}");
+                let axis = jig.axis_point(&near, &far) - centre;
+                assert!((axis - vec2(14.0, -9.0)).length() < 0.1, "{axis:?} for {e:?}");
+            }
         }
     }
 
-    /// Find aperture: a search over most of the frame, which also spans the baffle's edge
-    /// just outside the aperture. That edge is stronger but bright inside, so only the
-    /// aperture's dark-inside edge may count.
+    /// The jig's first search covers most of the frame, so it also spans the baffle's
+    /// edge just outside the aperture. That edge is stronger but bright inside, so only
+    /// the aperture's dark-inside edge may count.
     #[test]
-    fn find_aperture_skips_the_baffle_edge() {
+    fn wide_jig_search_skips_the_baffle_edge() {
         let scene = Scene { jig: true, axis_offset: [14.0, -9.0], ..Default::default() };
         let ((c, r), _) = scene.jig_geometry(W, H);
         let img = gray(&scene).blurred(3.0);
-        let m = H as f32;
-        let wide = DetectParams {
-            radius_min: 0.08 * m,
-            radius_max: 0.55 * m,
-            ..DetectParams::around(pos2(W as f32 / 2.0, H as f32 / 2.0), 0.3 * m, 0.0)
-        };
+        let wide = DetectParams::wide(vec2(W as f32, H as f32));
         let d = detect_circle(&img, &wide.with_polarity(Polarity::DarkInside)).unwrap();
         assert!((d.center - c).length() < 0.5 && (d.radius - r).abs() < 1.0, "{d:?} vs {c:?} r {r}");
     }

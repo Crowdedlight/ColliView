@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::camera::test_pattern::Scene;
 use crate::camera::{CameraWorker, Command, ControlDesc, DeviceInfo, DeviceKind, Event, Frame, VideoMode};
-use crate::detect::{DetectParams, Detection, GrayImage, Polarity, detect_circle};
-use crate::jig::JigGeometry;
+use crate::detect::{DetectParams, Detection, GrayImage, detect_circle};
+use crate::jig::{self, JigGeometry};
 use crate::overlay::draw::{paint_dashed_circle, paint_overlay};
 use crate::overlay::{LayerId, Measurement, Overlay, Rescale};
 use crate::processing::Processing;
@@ -85,12 +85,16 @@ pub enum JobKind {
 /// Time between live jig measurements.
 const LIVE_INTERVAL: Duration = Duration::from_millis(250);
 
+/// Misses in a row before the live jig readout searches the whole frame again.
+const JIG_RESEARCH_AFTER: u32 = 4;
+
 pub struct Job {
     pub kind: JobKind,
-    rx: Receiver<Vec<Option<Detection>>>,
+    rx: Receiver<Vec<Detection>>,
 }
 
-/// The live jig readout.
+/// The live jig readout. It keeps its own fits: the rings and the shared centre stay
+/// where they are, and the camera is what moves.
 #[derive(Default)]
 pub struct JigState {
     pub live: bool,
@@ -104,6 +108,24 @@ pub struct JigState {
 impl JigState {
     pub fn stop(&mut self) {
         *self = Self::default();
+    }
+
+    /// Where to look for the aperture next: around its last fit, or anywhere in the frame
+    /// before the first fit and once it has been lost for a while.
+    pub fn seed(&self) -> Option<Detection> {
+        self.fits.filter(|_| self.misses < JIG_RESEARCH_AFTER).map(|(near, _)| near)
+    }
+
+    /// Store a measurement. A miss keeps the last fits, so a bad frame doesn't blank
+    /// the readout.
+    pub fn record(&mut self, fits: Option<(Detection, Detection)>) {
+        match fits {
+            Some(f) => {
+                self.fits = Some(f);
+                self.misses = 0;
+            }
+            None => self.misses += 1,
+        }
     }
 }
 
@@ -339,8 +361,8 @@ impl ColliViewApp {
         self.frame.as_ref().map(|f| f.image.clone())
     }
 
-    /// Start a detection job. `searches` are run in order on the same frame.
-    fn spawn_job(&mut self, kind: JobKind, searches: Vec<DetectParams>) {
+    /// Run `search` on the current frame, off the UI thread.
+    fn spawn_job(&mut self, kind: JobKind, search: impl FnOnce(&GrayImage) -> Vec<Detection> + Send + 'static) {
         let Some(image) = self.current_image() else {
             self.error("No frame to analyse yet");
             return;
@@ -349,54 +371,27 @@ impl ColliViewApp {
         let ctx = self.ctx.clone();
         std::thread::spawn(move || {
             let gray = GrayImage::from_color_image(&image);
-            let mut results = Vec::new();
-            let mut prev: Option<Detection> = None;
-            for (i, mut p) in searches.into_iter().enumerate() {
-                // Searches after the first start from the previous result.
-                if i > 0
-                    && let Some(d) = prev
-                {
-                    p.center = d.center;
-                }
-                let d = detect_circle(&gray, &p);
-                results.push(d);
-                prev = prev.or(d);
-            }
-            let _ = tx.send(results);
+            let _ = tx.send(search(&gray));
             ctx.request_repaint();
         });
         self.job = Some(Job { kind, rx });
     }
 
-    /// Search 8–55 % of the frame from the image centre.
-    fn wide_search(size: Vec2) -> DetectParams {
-        let m = size.x.min(size.y);
-        DetectParams {
-            radius_min: 0.08 * m,
-            radius_max: 0.55 * m,
-            ..DetectParams::around((size / 2.0).to_pos2(), 0.3 * m, 0.0)
-        }
+    /// A job that fits one circle.
+    fn spawn_fit(&mut self, kind: JobKind, params: DetectParams) {
+        self.spawn_job(kind, move |gray| detect_circle(gray, &params).into_iter().collect());
     }
 
     pub fn detect_reference(&mut self) {
         let Some(size) = self.image_size() else { return };
         let o = &self.s.overlay;
         let params = if self.s.detect_wide {
-            Self::wide_search(size)
+            DetectParams::wide(size)
         } else {
             DetectParams::around(o.center, o.reference_radius().unwrap_or(0.4 * size.y), self.s.detect_tolerance)
         };
         self.preview = None;
-        self.spawn_job(JobKind::Reference, vec![params]);
-    }
-
-    /// Find the centring jig's aperture for the reference ring, shown as a preview to
-    /// accept. Only edges that are dark inside count: the baffle's edge, just outside the
-    /// aperture, is bright inside and would otherwise win.
-    pub fn find_jig_aperture(&mut self) {
-        let Some(size) = self.image_size() else { return };
-        self.preview = None;
-        self.spawn_job(JobKind::Reference, vec![Self::wide_search(size).with_polarity(Polarity::DarkInside)]);
+        self.spawn_fit(JobKind::Reference, params);
     }
 
     pub fn measure_layer(&mut self, id: LayerId) {
@@ -404,20 +399,16 @@ impl ColliViewApp {
         let Some(layer) = o.layer(id) else { return };
         let Some(r) = layer.radius() else { return };
         let params = DetectParams::around(o.center, r, 0.15);
-        self.spawn_job(JobKind::Measure(id), vec![params]);
+        self.spawn_fit(JobKind::Measure(id), params);
     }
 
-    /// One live jig measurement: the near aperture around the reference ring, then the
-    /// far hole around the aperture's centre.
+    /// One live jig measurement: the near aperture, then the far hole.
     fn jig_measure(&mut self) {
-        let o = &self.s.overlay;
-        let Some(r) = o.reference_radius() else { return };
-        let near = DetectParams::around(o.center, r, 0.12).with_polarity(Polarity::DarkInside);
-        // Wide band: a lens offset moves the hole off the aperture's centre.
-        let far = DetectParams::around(o.center, r * self.s.jig.far_radius_ratio(), 0.5)
-            .with_polarity(Polarity::BrightInside);
+        let (seed, geometry) = (self.jig.seed(), self.s.jig);
         self.jig.next = Some(Instant::now() + LIVE_INTERVAL);
-        self.spawn_job(JobKind::Jig, vec![near, far]);
+        self.spawn_job(JobKind::Jig, move |gray| {
+            jig::measure(gray, seed.as_ref(), &geometry).map_or_else(Vec::new, |(near, far)| vec![near, far])
+        });
     }
 
     fn run_jig(&mut self) {
@@ -445,11 +436,11 @@ impl ColliViewApp {
         self.job = None;
         let failed = "No clear circular edge found. Put the circle roughly on the feature, or widen the search";
         match kind {
-            JobKind::Reference => match results.first().copied().flatten() {
-                Some(d) => self.preview = Some(d),
+            JobKind::Reference => match results.first() {
+                Some(&d) => self.preview = Some(d),
                 None => self.error(failed),
             },
-            JobKind::Measure(id) => match results.first().copied().flatten() {
+            JobKind::Measure(id) => match results.first().copied() {
                 Some(d) => {
                     if let Some(l) = self.s.overlay.layer_mut(id) {
                         l.measured = Some(Measurement { center: d.center, radius: d.radius });
@@ -460,17 +451,10 @@ impl ColliViewApp {
             },
             // Dropped if the readout was turned off meanwhile. Misses only count, so a
             // bad frame doesn't flood the status bar.
-            JobKind::Jig if self.jig.live => {
-                match (results.first().copied().flatten(), results.get(1).copied().flatten()) {
-                    (Some(near), Some(far)) => {
-                        // Keep the circles on the aperture as the board moves.
-                        self.s.overlay.fit_reference(near.center, near.radius);
-                        self.jig.fits = Some((near, far));
-                        self.jig.misses = 0;
-                    }
-                    _ => self.jig.misses += 1,
-                }
-            }
+            JobKind::Jig if self.jig.live => self.jig.record(match results.as_slice() {
+                &[near, far] => Some((near, far)),
+                _ => None,
+            }),
             JobKind::Jig => {}
         }
     }
@@ -542,11 +526,9 @@ impl ColliViewApp {
             mesh.add_rect_with_uv(quad, uv, Color32::WHITE);
             painter.add(Shape::mesh(mesh));
         }
-        if self.s.show_image_center {
-            let c = vt.to_screen((size / 2.0).to_pos2());
-            let st = Stroke::new(1.0, Color32::from_white_alpha(110));
-            painter.line_segment([c - vec2(14.0, 14.0), c + vec2(14.0, 14.0)], st);
-            painter.line_segment([c - vec2(14.0, -14.0), c + vec2(14.0, -14.0)], st);
+        // The live jig readout also measures from the sensor centre, so it marks it.
+        if self.s.show_image_center || self.jig.live {
+            paint_sensor_centre(&painter, &vt, size);
         }
         paint_overlay(&painter, &vt, &self.s.overlay);
         for l in self.s.overlay.layers.iter().filter(|l| l.visible && l.id != self.s.overlay.reference) {
@@ -796,6 +778,14 @@ impl ColliViewApp {
     }
 }
 
+/// A grey ✕ on the sensor's centre.
+fn paint_sensor_centre(painter: &egui::Painter, vt: &ViewTransform, size: Vec2) {
+    let c = vt.to_screen((size / 2.0).to_pos2());
+    let st = Stroke::new(1.0, Color32::from_white_alpha(110));
+    painter.line_segment([c - vec2(14.0, 14.0), c + vec2(14.0, 14.0)], st);
+    painter.line_segment([c - vec2(14.0, -14.0), c + vec2(14.0, -14.0)], st);
+}
+
 /// The jig's two fits, and an arrow from the far hole to the aperture's centre: the way
 /// to push the camera board (with the view unflipped).
 fn paint_jig(painter: &egui::Painter, vt: &ViewTransform, near: &Detection, far: &Detection) {
@@ -863,5 +853,32 @@ impl eframe::App for ColliViewApp {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, &self.s);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui::pos2;
+
+    /// The live jig readout searches around its last aperture fit, and the whole frame
+    /// before the first fit and after a run of misses.
+    #[test]
+    fn jig_seed_follows_the_last_fit_until_lost() {
+        let d = |x: f32| Detection { center: pos2(x, 0.0), radius: 100.0, inlier_ratio: 1.0, rms: 0.1 };
+        let mut j = JigState::default();
+        assert_eq!(j.seed(), None);
+        j.record(Some((d(1.0), d(2.0))));
+        assert_eq!(j.seed(), Some(d(1.0)));
+        for _ in 1..JIG_RESEARCH_AFTER {
+            j.record(None);
+        }
+        assert_eq!(j.seed(), Some(d(1.0)));
+        j.record(None);
+        assert_eq!(j.seed(), None);
+        // The readout keeps showing the last fits meanwhile.
+        assert_eq!(j.fits, Some((d(1.0), d(2.0))));
+        j.record(Some((d(5.0), d(6.0))));
+        assert_eq!((j.seed(), j.misses), (Some(d(5.0)), 0));
     }
 }
