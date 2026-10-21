@@ -1,41 +1,15 @@
 # ColliView 2" camera adapter
 
-A 3D-printed 2" adapter that holds a USB camera module on the focuser axis, with a diffused LED
-light ring around the lens. Everything is parametric in [`colliview_adapter.scad`](colliview_adapter.scad),
-including the laser-cut acrylic diffuser, so all parts always match.
-
-```
-            cable + zip tie
-        ┌──────── cap ────────┐
-        │  trimmer, resistor  │   head: camera carrier pressed into the bore
-        │ ┌─── carrier ─────┐ │◄─ (or floating, on 3 radial M3 centring screws)
-        │ │ ▄▄▄ camera PCB  │ │
-  ══════╧═╧══╤═ lens ═╤═════╧═╧══════  flange: seats on the focuser (sets tilt)
-        │    │ baffle │    ▓│
-        │    │ (black │    ▓│ ◄─ 5 V COB LED strip on the barrel wall
-        │    │  bore) │     │    (white light chamber)
-        │    │        │     │
-        └▀▀▀▀┘        └▀▀▀▀▀┘ ◄─ opal acrylic ring, held by the retainer
-              telescope side
-```
+This readme details the generated 3D model, how to generate the stl files and how to make your own preset for other camera adapters. 
 
 ## Camera
 
-The default and only tested preset is `imx179_db05`: an IMX179 8 MP autofocus board with
-`DB05-AF-8MP` on its silkscreen ([source](https://www.aliexpress.com/item/1005005334799549.html)).
-Its measurements:
+The default and only tested preset is `imx179_db05`: an IMX179 8 MP autofocus board bought from: https://www.aliexpress.com/item/1005005334799549.html 
 
+Its measurements:
 - A 28 × 28 × 1.12 mm PCB, with 2.5 mm holes on a 23 mm square.
 - A centred voice-coil focus can, 8.46 × 8.46 × 4.5 mm.
-- The connector's pins come through about 2.35 mm on the lens side. That clears the 3 mm stand-off;
-  trim longer pins so the board sits flat.
-
-Use a 4:3 mode, such as 3264×2448: 16:9 modes crop the vertical field.
-
-**Field of view for another camera.** Measure `lens_to_rim` (the front of the lens to the far end of
-the drawtube) and `rim_d` (the drawtube's inner diameter) on your focuser. The console then prints
-`Required vertical FOV of the camera: >= N deg`. With the defaults that is 30°, so aim for a lens
-with 35–45° vertical FOV. For a fixed-focus lens, set the focus to about 15–20 cm.
+- The connector's pins come through about 2.35 mm on the lens side.
 
 ## Camera presets
 
@@ -54,14 +28,13 @@ function preset(name) =
 | `pcb` | PCB width, height and thickness. |
 | `holes` | Mounting-hole pitch. `[0, 0]` means no holes: the PCB then sits on corner pads in a pocket with a `fit_gap` clearance. |
 | `holder` | The lens holder's footprint on the PCB. It is cut through the carrier floor. |
-| `lens offset` | The lens centre relative to the PCB centre. The pocket shifts so the lens sits on the axis. |
+| `lens offset` | The lens centre relative to the PCB centre. The pocket shifts so the lens sits on the center axis. |
 | `lens body d` | The widest part of the lens or holder below the PCB (the diagonal, for a square one). It sizes the baffle. |
-| `lens drop` | From the PCB's front face down to the front of the lens. It sets the lens height. |
+| `lens drop` | From the PCB's front face down to the front of the lens. Controls the lens height. |
 
 To try a new board, set `camera = "custom"` and fill in the `custom_*` values, from the Customizer or with
 `-D`. To keep it as a preset, add a line above the `custom` one and add its name to the `camera = ...; // [...]`
-list. Measure the board with calipers rather than trusting listing photos. For a board with holes,
-also set `pcb_insert` to suit its screws.
+list. Measure the board with calipers for best results. For a board with holes, also set `pcb_insert` to suit its screws.
 
 Asserts stop the export if the board doesn't fit: for example a lens that sticks out of the baffle, a
 PCB boss that hits the lens holder, or the wire notch cutting into the pocket.
@@ -71,23 +44,13 @@ ColliView's jig defaults (16 / 44.4 / 6 / 100 mm) match the model's defaults. If
 
 ## Light ring
 
-- **Strip:** a 5 V COB strip, 4000 K, 4–5 mm wide, with a short cut unit. Its length is
-  `led_unit × led_units` (default 5 × 25 mm), and the model checks that it fits the chamber.
-  A 620 nm red strip is an option if you want to keep your night vision.
-- **Power:** take it from the camera board's 5V and GND pads. Put 10 Ω (¼ W) and a 100 Ω trimmer
-  in series, and set the current to 30–50 mA. At full brightness the strip would draw ~125 mA from
-  the USB port's 500 mA budget.
-- **Diffuser:** opal cast acrylic. 2 mm is brighter; 3 mm diffuses more evenly.
-
-```
- camera board            head                         light chamber
- 5V  ●──────── 10 Ω ──── 100 Ω trimmer ──┐
-                                         ├── JST ──── + COB strip −
- GND ●───────────────────────────────────┘                     │
-      └────────────────────────────────────────────────────────┘
-```
+- **Strip:** a 5V COB strip, 4000 K, 4–5 mm wide. Its length is `led_unit × led_units` (default 5 × 25 mm). The model checks that it fits the chamber.
+- **Power:** Solder extra wires together with the camera boards USB cable for 5V and GND. You can add resistors to limit the current drawn by the light-ring, but for the few LEDs and my test I just went without resister as I could control the exposure and focus on camera to not get blinded. And the 500 mA available on USB port should be plenty to drive the few LEDs and the camera board.
+  - Alternative you can also add a potentiometer in series and make a hole for it in the lid. That way you can adjust the brightness manually on the light-ring. 
+- **Diffuser:** opal/opaque 3mm acrylic. 
 
 ## Export, print and cut
+Script both for windows (ps1) and linux (sh). 
 
 ```sh
 ./build.sh                                   # needs openscad on PATH
@@ -105,20 +68,18 @@ These write `out/`:
 | `jig.stl` | The centring jig. |
 | `diffuser_{2,3}mm.{dxf,svg}` | The laser-cut ring. |
 
-**Printing.** Use PETG or ASA, matte black, with 4 perimeters. Nothing needs supports.
+**Printing.** I recommend to use PETG with 4 perimeters. Nothing needs support technically but for a nicer finish you can add support to the screw holes cylinders on the head.stl. PLA can work too, but be mindful if you leave it around where sun can reach it, as it will deform in time. 
 
-- The barrel prints flange-down. The carrier seat and the flange face are the two faces that set the
-  camera's tilt, which is why the barrel and head are separate parts. Remove any elephant's foot, so the
-  carrier sits flat.
-- `bed_chamfer` bevels fit edges that print on the bed.
+Colourwise I printed it all in grey, but if you want more contrast you can print the baffle in matte black. If you want more light you can coat the outer side of the baffle in something reflective or white, however I did not find that necessary. 
 
-**Carrier.** The default `carrier_fit = "fixed"` fills the head's bore with a `fixed_gap` (0.1 mm)
+Print The barrel flange-down. Ensure that the barrel and the head is clean and smooth where they slot together so they sit flush and does not add tilt to the camera.   
+
+**Carrier.** The default `carrier_fit = "fixed"` makes a carrier that fits the head with a `fixed_gap` (0.1 mm)
 clearance, so the lens sits on the axis by itself, within about ±0.25 mm. With `"floating"`, the
 carrier is smaller and is centred with three radial M3 screws. The head is the same for both.
 
-**Inserts.** The screw holes are sized for [CNC Kitchen heat-set inserts][cnck]. `pcb_insert` (default
-M2x3) sets the board's inserts, and `centring_insert` (default M3x5.7) the centring screws'. The console
-prints which screws to buy.
+**Inserts.** The screw holes are sized for [CNC Kitchen heat-set inserts][cnck] but most brands of heat inserts will fit. `pcb_insert` (default
+M2x3) is for the PCB/camera board inserts into the carrier, and `centring_insert` (default M3x5.7) is for the heads centering screws. 
 
 **Laser.** Import the DXF in millimetres. The paths already include `kerf`, so turn off your laser
 software's own offset. Measure your acrylic sheet and set `acrylic_t` to it before exporting the barrel.
@@ -132,30 +93,28 @@ and retainer.](img/assembly_exploded.png)
 
 ![Section of the assembled adapter.](img/assembly_section.png)
 
-1. Glue the **head** onto the flange (CA or epoxy), with the marks lined up on the wire side. For the
-   floating carrier, also fit M3 inserts and nylon-tipped screws.
-2. Line the barrel's bore with white tape or paint. Stick the LED strip around the top of the chamber,
+1. Glue the **head** onto the flange. Ensure that you don't place an adjustment screw where the hole is for the LED rings wires. For the floating carrier, also fit M3 inserts and nylon-tipped screws.
+2. Glue the LED strip around the top of the chamber,
    and feed its wires up the sloped channel.
-3. Blacken the **baffle's** bore and whiten its outside. Drop it in from the head into the counterbore.
-4. Push the **acrylic ring** into the bottom recess, and press the **retainer** onto the baffle.
+3. Drop the baffle from the head into the counterbore.
+4. Push the **acrylic ring** into the bottom recess, and press the **retainer** onto the baffle. (I added a bit of glue to the retainer. It is press-fit, but to keep it more secure a bit of glue helps)
 5. Melt M2 inserts into the carrier, screw on the board with the lens facing down, and press the
-   carrier into the head with its notch at the mark. Solder the LED wires through the resistor and
-   trimmer to 5V and GND. Keep the trimmer and plug clear of the head's wall, because the cap's lip
-   reaches 5 mm down inside it.
-6. Set the trimmer, push the cap in, and zip-tie the cable. To take the cap off, lever it out at its
-   notches.
+   carrier into the head with its hole for wires at where the LED wires comes up. (If you PCB board does not lie flush you might need to cut a little edge of one of the 3D printed standoffs, as the board can have resistors or caps that hit part of it)
+6. Solder the LED wires to 5V and GND. If you decided to add a resistor or potentiometer then add it first.
+7. Try and plug it in to ensure everything works before fitting the cap on and zip-tie the cable. To take the cap off, lever it out at its notches.
 
 ![The head from above with the cap off.](img/assembly_top.png)
 
 Set `part = "exploded"`, `"section"` or `"top_view"` to view these in OpenSCAD. `python make_figures.py`
-(needs Pillow and NumPy) redraws the figures.
+(needs Pillow and NumPy) redraws the figures based on default preset.
 
 ## Camera centring check
 
-The circles follow the drawtube, so sensor offset and camera tilt don't matter. What matters is how
-far the **lens** sits off the focuser axis: the primary ends up off by about half that offset, plus any
-play of the barrel in the focuser. A tenth or two of a millimetre is fine at about f/5; faster mirrors
-need less. Use a compression-ring focuser if you can.
+Ideally you would want the sensor of the camera sensor in the middle of your barrel so it would match your astro or DSLR camera. Minor offsets is alright with most telescopes as you set the center-point for the concentric circles based on the focuser tube anyway.
+
+But if you want to minimize the error of the camera sitting outside the axis of the focuser and use the floating carrier with nylon-tipped screws then you can print the jig.stl and put it on a backlight screen like a phone on a white background. Looking through the live-view after clicking "to image center" will put the rings on the center of your camera sensor. You can then adjust the screws until the center is concentric in the middle of the view. 
+
+A tenth or two of a millimetre is fine at about f/5; Use a compression-ring focuser if you can to avoid it being pushed to one side by a screw.
 
 `jig.stl` holds the adapter by its barrel. Its two holes on the axis line up, as seen through the
 camera, when the lens is centred. The model prints its dimensions as `Centring jig: …`.
@@ -168,12 +127,4 @@ camera, when the lens is centred. The model prints its dimensions as `Centring j
    arrow's direction with a small nudge first.
 4. Turn the adapter 180° and average the two readings: that cancels any print error in the jig.
 
-**Focuser checks.** If the centre spot jumps when you rack or lock the focuser, the drawtube moves
-sideways. That counts in full, like barrel play. Focuser tilt rarely needs fixing, because the
-secondary makes up for it.
-
-## Sources
-
-- IMX179 AF module (`DB05-AF-8MP`): <https://www.aliexpress.com/item/1005005334799549.html>
-- Opal acrylic: <https://www.perspex.co.uk/materials/perspex-cast-acrylic/opal-white/>
-- CNC Kitchen heat-set inserts: <https://cnckitchen.store/cdn/shop/files/table_metric.png>
+<img width="1801" height="952" alt="Image" src="https://github.com/user-attachments/assets/034aab5d-d315-44b6-88b7-5ee9e891f608" />

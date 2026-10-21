@@ -1,25 +1,38 @@
 # ColliView
 
-A live USB-camera collimation aid for Newtonian telescopes, like an electronic OCAL. Put the camera in
-the focuser, and line up the drawtube, the secondary and the primary reflections with concentric
-circles drawn over the live view. It runs on Windows and Linux, and is written in Rust with
-[egui](https://github.com/emilk/egui).
+***Full disclaimer, most of this projects code and 3D model is AI assisted as I wanted to test the capabilities for a hobby
+ project like this with both code and 3D models. As well as help me build it in shorter time.*** 
+
+<img width="1895" height="1182" alt="Image" src="https://github.com/user-attachments/assets/1de6d236-18e5-4d32-9706-beb13c804066" />
+
+This is my DIY camera collimation project. I was inspired by OCAL but wanted to make my own. Last year I took a simple logitech
+ webcam and 3D printed a mount and used that to try and collimate with various success. This season I wanted to upgrade it
+ and make it nicer for myself to use. 
+
+It consist of an adjustable 3D printed model for mounting an autofocus IMX179 camera board on with support for lighting through LEDs. The software part control and makes it possible to set the circles used for collimation.
 
 The camera sits in a 3D-printed 2" adapter with a diffused LED light ring. See [hardware/](hardware/README.md)
 for the model, the camera presets and the build.
 
 ## Features
+- control any usb camera supporting UVC protocol
+- Concentric circle layers with shared center position
+- Auto-detect feature trying to estimate and auto-detect the focuser-tube for easy 1-click fit of the center
+- A camera centering "jig" used to calibrate the camera housing to be in center. (For telescopes around F/5 you can just print the static non-adjustable carrier as the minor offset from center with the PCB should be good enough for collimation)
+- parametric 3D models. (Read below how to make a preset that fit to another camera board)
+- a test-pattern to try out the features without a camera connected
 
-- Live view from any UVC camera (MJPEG/YUYV/NV12), with a resolution and frame-rate picker.
-- Native camera controls (focus, exposure, gain, white balance, …), each with an auto toggle.
-  These use Media Foundation on Windows and V4L2 on Linux.
-- Concentric circle and crosshair layers on one shared centre. They are stored in sensor pixels, so
-  they stay locked to the image when you zoom, pan or flip.
-- **Auto-detect** fits the reference ring and the centre to the drawtube edge with sub-pixel accuracy.
-  **Measure** reports how far another feature is off centre.
-- A camera centring check with a printed jig, which reads the lens's offset from the barrel axis in mm.
-- Image tools (brightness, contrast, gamma, invert, frame averaging), freeze, PNG snapshots,
-  per-telescope JSON profiles, and a simulated Newtonian test pattern for trying it without a camera.
+## Equipment used
+- 3D printer and PETG filament
+- opaque acrylic cut with a lasercutter
+- Soldering iron and some wires + JST connector
+
+## Materials used
+- PETG filament
+- 3mm opaque acrylic
+- LED COB strip 5mm - https://www.aliexpress.com/item/1005008168129046.html
+- micro lens f4.5 IMX179 with autofocus - https://www.aliexpress.com/item/1005005334799549.html
+
 
 ## Running
 
@@ -37,17 +50,14 @@ sudo apt install build-essential pkg-config libclang-dev libxkbcommon-dev libway
 sudo usermod -aG video $USER   # log in again afterwards
 ```
 
-Pushing a `v*` tag builds both platforms and attaches them to a GitHub release
-(see [`.github/workflows/release.yml`](.github/workflows/release.yml)).
-
 ## Usage
 
-1. Put the adapter in the focuser, light the tube and pick the camera in the top bar.
-2. Press **D** to auto-detect the drawtube edge, check the dashed preview and click **Accept**.
-3. Adjust the secondary until its outline is concentric with the green circle.
-4. Adjust the primary until its reflection, the clips and the centre spot line up with the red,
-   magenta and cyan circles.
-5. Save a profile for the telescope.
+1. Put the adapter in the focuser and pick the camera in the top bar of the gui.
+2. Press **D** or click on the auto-detect button to attempt auto-fitting the drawtube edge, check the dashed preview and click **Accept** if its good enough. (Ensure your focus is for the drawtube or as close it can be for better performance. Alternatively just adjust the ring yourself with the center coordinates top-left, with hotkeys or by dragging with mouse)
+3. Enable the secondary and primary reflection ring, change focus and exposure to be optimal for the secondary mirror. 
+4. Adjust the secondary mirror until it is concentric within the circle and you can see the entire primary mirror in its reflection. (Adjust the ring size to easier see the fit) its concentric with the focuser edge  until its outline is concentric with the green circle.
+4. Adjust the primary until its center reflection is concentric within the small circle. Ideally at this point the primary mirrors center-marking should be aligned with your camera lens reflection.
+5. Save a profile for the telescope if you want to save the circle sizes for another time.
 
 The app's **Help** window lists the mouse and keyboard controls. The main keys:
 
@@ -65,10 +75,5 @@ cargo test
 cargo clippy --all-targets
 ```
 
-| Path | What |
-|---|---|
-| `src/camera/` | Capture worker thread ([nokhwa](https://crates.io/crates/nokhwa)) and the test pattern. |
-| `src/camera/controls/` | Native controls. nokhwa can't switch a control from auto to manual on Windows, so these open a second Media Foundation source (Windows) or a `/dev/videoN` handle (Linux). |
-| `src/overlay/`, `src/view.rs` | Layers, and the sensor↔screen transform. |
-| `src/detect.rs`, `src/jig.rs` | Circle detection, and the centring jig's geometry. |
-| `hardware/` | The OpenSCAD adapter model, its build scripts and docs. |
+## Generate 3D models and how to assemble it
+See [hardware/](hardware/README.md)
